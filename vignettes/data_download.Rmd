@@ -1,0 +1,120 @@
+---
+title: "Network Data Download"
+authors: 'Noémie Wellinger, Nils Tinner and Patrick Bigler'
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+This R Markdown serves to download the measurement data (temperature and relative humidity) from the Grafana server. The script was developed by Nils Tinner and improved by Noémie Wellinger and Patrick Bigler.
+
+[Do you have questions about the workflow? Contact the authors:]{.underline}
+
+Nils Tinner: nils.tinner\@unibe.ch
+
+Noémie Wellinger: noemie.wellinger\@unibe.ch
+
+Patrick Bigler: patrick.bigler2\@unibe.ch
+
+# Data from current loggers
+
+The time range of the data to be downloaded can be set manually in the `Logger_data()` function. By default, this function saves the downloaded data directly into a CSV file. To prevent this, set the parameter `write_csv = FALSE`. The function also interpolates missing data up to a maximum of two time steps before and after the last recorded data. To disable interpolation, set `interpolate = FALSE`. Metadata tables containing station names, Grafana codes, coordinates, and installation dates of each logger (including replaced loggers) are used to retrieve data from all loggers that were operational within the chosen time frame. The function organizes the data into two main tables (temperature and relative humidity) with rounded 10-minute time steps, with a separate column for each logger.
+
+## Function: Logger_Data()
+
+Here, we load the function. Note that the package-loading function and the interpolate function are integrated into the `Logger_Data.R` script, so there is no need to load them separately. Moreover, the logger use UTC as a time format!
+
+The structure of the function is as followed:
+
+-   **city:** The city for which the data should be downloaded (Bern, Thun, or Biel).
+
+-   **date_start:** A character string containing the first day of data to download. Default is 50 days ago.
+
+-   **date_end:** A character string containing the last day. Default is yesterday.
+
+-   **write_csv:** A Boolean indicating whether the data should be directly saved into a csv. Default is TRUE.
+
+-   **interpolate:** A Boolean indicating whether missing data should be interpolated. Default is TRUE.
+
+-   **type:** Choose between "temperature" and (relative) "humidity" data
+
+-   **return:** A dataframe containing the downloaded data in tidy format.
+
+```{r Load function "Logger_Data", message=FALSE, warning=FALSE, include=FALSE}
+source('../R/Logger_Data.R')
+```
+
+### Bern
+
+This is the function to download the data for the city of Bern.
+
+```{r Run Logger_data for Bern message=FALSE, warning=FALSE, include=}
+data <- Logger_data(city = 'Bern', 
+                    date_start = '2024-08-20', 
+                    date_end = '2024-08-27', 
+                    interpolate = 0, 
+                    write_csv = T,
+                    type = 'temperature')
+```
+
+### Thun
+
+This is the function to download the data for the city of Thun.
+
+```{r Run Logger_data for Thun include = F}
+data <- Logger_data(city = 'Thun', 
+                    date_start = '2024-08-20', 
+                    date_end = '2024-08-27', 
+                    interpolate = 0, 
+                    write_csv = T,
+                    type = 'temperature') 
+```
+
+### Biel
+
+This is the function to download the data for the city of Biel.
+
+```{r Run Logger_data for Biel include=FALSE}
+data <- Logger_data(city = 'Biel', 
+                    date_start = '2024-08-20', 
+                    date_end = as.character(Sys.Date()), 
+                    interpolate = 0, 
+                    write_csv = T,
+                    type = 'temperature')
+```
+
+# Quality-Control
+
+In this section, an initial quality control is conducted. Note that this is only for an overview and does not replace a thorough quality control. First, the timestamp is checked to ensure it is in UTC/GMT. If it is in a different time zone (e.g., MEZ), you should correct the timestamp immediately.
+
+```{r}
+# Get the timezone from data$time (should be UTC)
+attr(data$time, "tzone")
+```
+
+## Plot missing data
+
+Here, a plot for the missing data is generated. It returns a tidy table that shows the locations of the missing values (`Log_NR`).
+
+```{r plots, include = T}
+visdat::vis_miss(data,
+                 cluster = FALSE, 
+                 warn_large_data = FALSE,
+                 sort_miss = TRUE)
+
+data_cleaned <- data |>
+  dplyr::select(-time)
+
+visdat::vis_value(data_cleaned)
+```
+
+## Map missing data
+
+Finally, the missing values are displayed on a leaflet map to identify where the problems are. A function was written for this purpose, which returns a list. The first element of the list is a table showing the percentage of missing values at each specific location. The second element is the map, which visually indicates the locations of the missing values.
+
+```{r}
+source('../R/quality_control.R')
+results <- quality_control('Biel')
+
+results[1]
+results[2]
+```
