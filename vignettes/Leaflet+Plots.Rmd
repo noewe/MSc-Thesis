@@ -1,0 +1,130 @@
+---
+title: "Leaflet map and plots"
+author: 'Noémie Wellinger'
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+```
+
+# Leaflet map
+```{r}
+# TODO use the final summary file here
+# ********
+
+data_missing <- data_cleaned |>
+  #summarize by counting how many rows contain NA and dividing by number of rows
+  summarize_all(~sum(is.na(.))/n()) |>
+  # Add column names as row
+  rbind(colnames(data_cleaned)) |>
+  t() |>
+  as.data.frame() |>
+  rename(missing = V1,
+         Log_NR = V2) |>
+  mutate(missing = as.numeric(missing) * 100)
+
+metadata <- metadata |>
+  left_join(data_missing, by = c("Log_NR"))
+
+pal_missing <- leaflet::colorNumeric("plasma", domain = metadata$missing)
+
+leaflet::leaflet(metadata) |>
+  leaflet::addTiles() |>
+  leaflet::addCircleMarkers(~OST_CHTOPO, ~NORD_CHTOPO, 
+                            fillColor = ~pal(missing), radius = 6, fillOpacity = 1, 
+                            color = "black", weight = 1, opacity = 1, 
+                            popup = paste(
+                             "<strong>Measurement type: </strong>", round(metadata$missing))) |>
+  leaflet::addLegend("bottomright", pal = leaflet::colorNumeric("plasma", domain = metadata$missing), values = metadata$missing, title = "Missing data in %")
+```
+
+
+# Plots
+```{r}
+# Plotly of diurnal cycles of temperature and humidity
+ggplot_T_diurnal <- T_mean_diurnal |>
+  pivot_longer(cols = starts_with("Log_"), names_to = "Logger", values_to = "Temperature") |>
+  ggplot(aes(x = hour, y = Temperature, color = Logger, group = Logger)) +
+  geom_line() +
+  labs(title = "Diurnal Cycle of Temperature",
+       x = "Hour",
+       y = "Temperature [°C]",
+       color = "Logger") +
+  scale_x_continuous(breaks = seq(0, 23, by = 1)) +
+  theme_minimal()
+ggplotly(ggplot_T_diurnal)
+
+ggplot_H_diurnal <- T_mean_diurnal |>
+  pivot_longer(cols = starts_with("Log_"), names_to = "Logger", values_to = "Humidity") |>
+  ggplot(aes(x = hour, y = Humidity, color = Logger, group = Logger)) +
+  geom_line() +
+  labs(title = "Diurnal Cycle of Humidity",
+       x = "Hour",
+       y = "Humidity [%]",
+       color = "Logger") +
+  scale_x_continuous(breaks = seq(0, 23, by = 1)) +
+  theme_minimal()
+ggplotly(ggplot_H_diurnal)
+
+# Plotly diurnal cycles of UHI
+ggplot_UHI_diurnal <- UHI_diurnal |>
+  pivot_longer(cols = starts_with("Log_"), names_to = "Logger", values_to = "UHI") |>
+  ggplot(aes(x = hour, y = UHI, color = Logger, group = Logger)) +
+  geom_line() +
+  labs(title = "Diurnal Cycle of Urban Heat Island",
+       x = "Hour",
+       y = "UHI [°C]",
+       color = "Logger") +
+  scale_x_continuous(breaks = seq(0, 23, by = 1)) +
+  theme_minimal()
+ggplotly(ggplot_UHI_diurnal)
+
+```
+
+
+```{r}
+# Reshape UHI_diurnal to long format
+UHI_diurnal_long <- UHI_diurnal %>%
+  pivot_longer(cols = starts_with("Log_"), names_to = "Log_NR", values_to = "UHI") %>%
+  left_join(meta, by = c("Log_NR" = "Log_NR.x"))
+
+# Plot urban vs. rural variables
+ggplot(UHI_long, aes(x = hour, y = value, color = `3-type`)) +
+  geom_line() +
+  facet_wrap(~ `3-type`) +
+  theme_minimal()
+
+
+UHI_diurnal_long |>
+  group_by(hour, `3-type`) |>
+  summarize(UHI = mean(UHI, na.rm = TRUE)) |>
+  ggplot(aes(x = hour, y = UHI, color = `3-type`)) +
+  geom_line() +
+  labs(title = "Diurnal Cycle of Urban Heat Island",
+       x = "Hour",
+       y = "UHI [°C]",
+       color = "Land Use Type") +
+  scale_x_continuous(breaks = seq(0, 23, by = 2)) +
+  theme_minimal()
+
+UHI_diurnal_long |>
+  group_by(hour, `LU_7-type`) |>
+  summarize(UHI = mean(UHI, na.rm = TRUE)) |>
+  mutate(`LU_7-type` = factor(`LU_7-type`, levels = c("dense urban", "green urban", "rural", "forest", "low green", "water"))) |>
+  ggplot(aes(x = hour, y = UHI, color = `LU_7-type`)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
+  geom_line(linewidth=1) +
+  labs(title = "Urban Heat Island",
+       subtitle = "Reference: MeteoSchweiz 3m, Allmendingen",
+       x = "Hour",
+       y = "UHI [°C]",
+       color = "Land Use Type") +
+  scale_x_continuous(breaks = seq(0, 23, by = 2)) +
+  scale_color_manual(values = c("black", "brown", "orange", "darkgreen", "#44dd55", "#2255cc")) +
+  theme_minimal()
+
+```
+
+
