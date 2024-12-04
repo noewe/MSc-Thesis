@@ -6,6 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
+library(cowplot)
 
 ```
 
@@ -42,11 +43,16 @@ leaflet::leaflet(metadata) |>
 
 
 # Plots
+
+Plotly to have a first look
 ```{r}
+# Reshape UHI_diurnal to long format
+data_long_diurnal_meta <- data_long_diurnal |>
+  left_join(meta, by = "Log_NR")
+
 # Plotly of diurnal cycles of temperature and humidity
-ggplot_T_diurnal <- T_mean_diurnal |>
-  pivot_longer(cols = starts_with("Log_"), names_to = "Logger", values_to = "Temperature") |>
-  ggplot(aes(x = hour, y = Temperature, color = Logger, group = Logger)) +
+ggplot_T_diurnal <- data_long_diurnal_meta |>
+  ggplot(aes(x = hour, y = T_mean, group = Log_NR, color = `LU_7-type`)) +
   geom_line() +
   labs(title = "Diurnal Cycle of Temperature",
        x = "Hour",
@@ -56,9 +62,8 @@ ggplot_T_diurnal <- T_mean_diurnal |>
   theme_minimal()
 ggplotly(ggplot_T_diurnal)
 
-ggplot_H_diurnal <- T_mean_diurnal |>
-  pivot_longer(cols = starts_with("Log_"), names_to = "Logger", values_to = "Humidity") |>
-  ggplot(aes(x = hour, y = Humidity, color = Logger, group = Logger)) +
+ggplot_H_diurnal <- data_long_diurnal_meta |>
+  ggplot(aes(x = hour, y = H_mean, color = Log_NR, group = `LU_7-type`)) +
   geom_line() +
   labs(title = "Diurnal Cycle of Humidity",
        x = "Hour",
@@ -69,9 +74,8 @@ ggplot_H_diurnal <- T_mean_diurnal |>
 ggplotly(ggplot_H_diurnal)
 
 # Plotly diurnal cycles of UHI
-ggplot_UHI_diurnal <- UHI_diurnal |>
-  pivot_longer(cols = starts_with("Log_"), names_to = "Logger", values_to = "UHI") |>
-  ggplot(aes(x = hour, y = UHI, color = Logger, group = Logger)) +
+ggplot_UHI_diurnal <- data_long_diurnal_meta |>
+  ggplot(aes(x = hour, y = UHI_mean, color = Log_NR, group = `LU_7-type`)) +
   geom_line() +
   labs(title = "Diurnal Cycle of Urban Heat Island",
        x = "Hour",
@@ -81,40 +85,80 @@ ggplot_UHI_diurnal <- UHI_diurnal |>
   theme_minimal()
 ggplotly(ggplot_UHI_diurnal)
 
+Daily_summer_plot <- data_long_daily |>
+  ggplot(aes(x = date(day=day, month=month, year = 2024), y = T_mean, color = Log_NR)) +
+  geom_line() +
+  labs(title = "Daily Mean Temperature",
+       x = "Date",
+       y = "Temperature [°C]",
+       color = "Logger") +
+  theme_minimal()
+
+ggplotly(Daily_summer_plot)
+
+```
+
+## Daily mean over the summer
+```{r}
+# Daily mean temperature
+daily_summary_T <- T_mean_daily |>
+  pivot_longer(cols = starts_with("Log_"), names_to = "Logger", values_to = "Temperature") |>
+  group_by(date = date(time)) |>  # Summarize by date
+  summarise(
+    mean_temp = mean(Temperature, na.rm = TRUE),
+    min_temp = min(Temperature, na.rm = TRUE),
+    max_temp = max(Temperature, na.rm = TRUE)
+  ) 
+
+daily_summary_TH <- H_mean_daily |>
+  pivot_longer(cols = starts_with("Log_"), names_to = "Logger", values_to = "Humidity") |>
+  group_by(date = date(time)) |>  # Summarize by date
+  summarise(
+    mean_hum = mean(Humidity, na.rm = TRUE),
+    min_hum = min(Humidity, na.rm = TRUE),
+    max_hum = max(Humidity, na.rm = TRUE)
+  ) |>
+  full_join(daily_summary_T, by = "date")
+
+
+
+# Temperature Plot
+temperature_plot <- ggplot(daily_summary_TH, aes(x = date)) +
+  geom_ribbon(aes(ymin = min_temp, ymax = max_temp), fill = "pink", alpha = 0.5) +
+  geom_line(aes(y = mean_temp, color = "Mean Temperature"), linewidth = 1) +
+  scale_y_continuous(name = "Temperature [°C]") +
+  labs(title = "Daily Mean Temperature",
+       x = "Date",
+       color = "Legend") +
+  theme_minimal() +
+  scale_color_manual(values = c("Mean Temperature" = "red"))
+
+# Humidity Plot
+humidity_plot <- ggplot(daily_summary_TH, aes(x = date)) +
+  geom_ribbon(aes(ymin = min_hum, ymax = max_hum), fill = "lightblue", alpha = 0.5) +
+  geom_line(aes(y = mean_hum, color = "Mean Humidity"), linewidth = 1) +
+  scale_y_continuous(name = "Humidity [%]") +
+  labs(title = "Daily Mean Humidity",
+       x = "Date",
+       color = "Legend") +
+  theme_minimal() +
+  scale_color_manual(values = c("Mean Humidity" = "blue"))
+
+plot_grid(temperature_plot, humidity_plot, labels = c('A', 'B'), label_size = 12, align = "v", ncol = 1)
 ```
 
 
+
+
+## UHI diurnal cycle
 ```{r}
-# Reshape UHI_diurnal to long format
-UHI_diurnal_long <- UHI_diurnal %>%
-  pivot_longer(cols = starts_with("Log_"), names_to = "Log_NR", values_to = "UHI") %>%
-  left_join(meta, by = c("Log_NR" = "Log_NR.x"))
-
-# Plot urban vs. rural variables
-ggplot(UHI_long, aes(x = hour, y = value, color = `3-type`)) +
-  geom_line() +
-  facet_wrap(~ `3-type`) +
-  theme_minimal()
-
-
-UHI_diurnal_long |>
-  group_by(hour, `3-type`) |>
-  summarize(UHI = mean(UHI, na.rm = TRUE)) |>
-  ggplot(aes(x = hour, y = UHI, color = `3-type`)) +
-  geom_line() +
-  labs(title = "Diurnal Cycle of Urban Heat Island",
-       x = "Hour",
-       y = "UHI [°C]",
-       color = "Land Use Type") +
-  scale_x_continuous(breaks = seq(0, 23, by = 2)) +
-  theme_minimal()
-
-UHI_diurnal_long |>
+# 6-type landcover
+data_long_diurnal_meta|>
   group_by(hour, `LU_7-type`) |>
-  summarize(UHI = mean(UHI, na.rm = TRUE)) |>
+  summarize(UHI = mean(UHI_mean, na.rm = TRUE)) |>
   mutate(`LU_7-type` = factor(`LU_7-type`, levels = c("dense urban", "green urban", "rural", "forest", "low green", "water"))) |>
   ggplot(aes(x = hour, y = UHI, color = `LU_7-type`)) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.1) +
   geom_line(linewidth=1) +
   labs(title = "Urban Heat Island",
        subtitle = "Reference: MeteoSchweiz 3m, Allmendingen",
@@ -125,6 +169,64 @@ UHI_diurnal_long |>
   scale_color_manual(values = c("black", "brown", "orange", "darkgreen", "#44dd55", "#2255cc")) +
   theme_minimal()
 
+# 6-type landcover
+data_long_diurnal_meta|>
+  group_by(hour, `3-type`) |>
+  summarize(UHI = mean(UHI_mean, na.rm = TRUE)) |>
+  mutate(`3-type` = factor(`3-type`, levels = c("urban", "rural", "water"))) |>
+  ggplot(aes(x = hour, y = UHI, color = `3-type`)) +
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.1) +
+  geom_line(linewidth=1) +
+  labs(title = "Urban Heat Island",
+       subtitle = "Reference: MeteoSchweiz 3m, Allmendingen",
+       x = "Hour",
+       y = "UHI [°C]",
+       color = "Land Use Type") +
+  scale_x_continuous(breaks = seq(0, 23, by = 2)) +
+  scale_color_manual(values = c("#772205", "#559944", "#2255cc")) +
+  theme_minimal()
+
+
 ```
+# Heat Index diurnal cycle
+```{r}
+data_long_diurnal_meta |>
+  #mutate(HI_Temp_diff = HI_mean - T_mean) |>  # Calculate difference between Heat Index and Temperature
+  group_by(hour, `3-type`) |>
+  summarize(Heat_Index = mean(HI_mean, na.rm = TRUE),
+            Temperature =mean(T_mean, na.rm = TRUE)) |>
+  mutate(`3-type` = factor(`3-type`, levels = c("urban", "rural", "water"))) |>
+  ggplot() +
+  geom_line(aes(x = hour, y = Heat_Index, color = `3-type`, linetype = "dashed")) +
+  geom_line(aes(x = hour, y = Temperature, color = `3-type`, linetype = "solid")) +
+  labs(title = "Percieved and Actual Temperature",
+       subtitle = "jjsdf",
+       x = "Hour",
+       y = "Temperature [°C]",
+       color = "Land Use Type") +
+  scale_x_continuous(breaks = seq(0, 23, by = 2)) +
+  scale_color_manual(values = c("#772205", "#559944", "#2255cc")) +
+  theme_minimal()
+  
+# TODO do this for the warmest day(s) of this summer
+```
+
+
+```{r}
+Daily_summer_plot <- T_mean_daily |>
+  pivot_longer(cols = starts_with("Log_"), names_to = "Logger", values_to = "Temperature")
+
+
+  ggplot(aes(x = date(time), y = Temperature, color = Logger)) +
+  geom_line() +
+  labs(title = "Daily Mean Temperature",
+       x = "Date",
+       y = "Temperature [°C]",
+       color = "Logger") +
+  theme_minimal()
+
+ggplotly(Daily_summer_plot)
+```
+
 
 
