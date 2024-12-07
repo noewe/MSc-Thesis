@@ -1,0 +1,90 @@
+---
+title: "Leaflet"
+author: 'Noémie Wellinger'
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+```{r}
+library(shiny)
+library(leaflet)
+library(dplyr)
+```
+
+```{r}
+# Join with metadata for coordinates
+data_long_monthly_meta <- data_long_monthly |>
+  left_join(meta, by = "Log_NR")
+
+data_long_JAS_meta <- data_long_JAS |>
+  left_join(meta, by = "Log_NR")
+
+data_long_MJJAS_meta <- data_long_MJJAS |>
+  left_join(meta, by = "Log_NR")
+```
+
+# Global variables
+```{r}
+indicator_names <- c(
+  "T_mean_day" = "Mean Temperature (Day)",
+  "UHI_day" = "Urban Heat Island (Day)",
+  "UHI_night" = "Urban Heat Island (Night)",
+  "Tropical_night" = "Tropical Nights",
+  "Summer_day" = "Summer Days",
+  "Hot_day" = "Hot Days",
+  "H_mean" = "Mean Humidity"
+)
+```
+
+```{r}
+ui <- fluidPage(
+  titlePanel("Stadtklima Thun/Steffisburg"),
+  sidebarLayout(
+    sidebarPanel(
+      radioButtons("month", "Select Month", choices = c("May-September" = "MJJAS", "July-September" = "JAS", unique(monthly_data$month)), selected = "MJJAS", inline = TRUE),
+      radioButtons("indicator", "Select Indicator", choices = c("T_mean_day", "UHI_day", "UHI_night", "Tropical_night", "Summer_day", "Hot_day", "H_mean"), selected = "T_mean_day", inline = TRUE)
+    ),
+    mainPanel(
+      leafletOutput("map")
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  
+  selected_data <- reactive({
+    if (input$month == "MJJAS") {
+      data_long_MJJAS_meta
+    } else if (input$month == "JAS") {
+      data_long_JAS_meta
+    } else {
+      data_long_monthly_meta |> filter(month == as.numeric(input$month))
+    }
+  })
+  
+  output$map <- renderLeaflet({
+  data <- selected_data()
+  leaflet(data) |> 
+    addTiles() |> 
+    addCircleMarkers(
+      ~OST_CHTOPO, ~NORD_CHTOPO,
+      radius = 6,
+      color = "black", weight = 1, opacity = 1,
+      fillColor = ~colorNumeric(palette = "YlOrRd", domain = data[[input$indicator]])(data[[input$indicator]]),
+      fillOpacity = 1,
+      label = ~paste(Log_NR, "<br>", indicator_names[[input$indicator]], ": ", round(data[[input$indicator]], 2)),
+      group = input$indicator
+    ) |> 
+    addLegend(
+      "bottomright",
+      pal = colorNumeric(palette = "YlOrRd", domain = data[[input$indicator]]),
+      values = data[[input$indicator]],
+      title = indicator_names[[input$indicator]]
+    )
+  })
+}
+
+shinyApp(ui, server)
+```
+
