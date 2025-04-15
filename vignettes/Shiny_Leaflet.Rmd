@@ -10,6 +10,9 @@ output: html_document
 library(shiny)
 library(leaflet)
 library(dplyr)
+library(shinyjs)
+library(tidyr)
+library(plotly)
 ```
 
 ```{r}
@@ -22,66 +25,324 @@ data_long_JAS_meta <- data_long_JAS |>
 
 data_long_MJJAS_meta <- data_long_MJJAS |>
   left_join(meta, by = "Log_NR")
+
+data_long_daily_meta <- data_long_daily |>
+  left_join(meta, by = "Log_NR")
 ```
+
+```{r}
+# visualize missing data
+missing_data <- data_long_daily |>
+  select(time_day, Log_NR, T_mean) |>
+  pivot_wider(names_from = Log_NR, values_from = T_mean)
+  
+  
+visdat::vis_miss(missing_data,
+                 cluster = FALSE, 
+                 warn_large_data = FALSE,
+                 sort_miss = TRUE)
+
+data_cleaned <- missing_data |>
+  dplyr::select(-time_day)
+
+visdat::vis_value(data_cleaned)
+
+missing_data <- data_long_hourly |>
+  select(time_hour, Log_NR, T_mean) |>
+  pivot_wider(names_from = Log_NR, values_from = T_mean)
+  
+  
+visdat::vis_miss(missing_data,
+                 cluster = FALSE, 
+                 warn_large_data = FALSE,
+                 sort_miss = TRUE,
+                 show_perc_col = TRUE
+                 )
+
+data_cleaned <- missing_data |>
+  dplyr::select(-time_hour)
+
+visdat::vis_value(data_cleaned)
+```
+
 
 # Global variables
 ```{r}
-indicator_names <- c(
-  "T_mean_day" = "Mean Temperature (Day)",
-  "UHI_day" = "Urban Heat Island (Day)",
-  "UHI_night" = "Urban Heat Island (Night)",
-  "Tropical_night" = "Tropical Nights",
-  "Summer_day" = "Summer Days",
-  "Hot_day" = "Hot Days",
-  "H_mean" = "Mean Humidity"
+indicator_label_legend <- c(
+  "T_mean_day" = "Mean Temperature (day)",
+  "T_mean_night" = "Mean Temperature (day)", 
+  "T_mean"= "Mean Temperature",
+  "T_max_day"= "Maximum Temperature", 
+  "UHI_day" = "Daytime UHI \u0394",
+  "UHI_night" = "Nighttime UHI \u0394",
+  "Tropical_night" = "Tropical Nights (>= 20°C)",
+  "Summer_day" = "Summer Days (>= 25°C)",
+  "Hot_day" = "Hot Days (>= 30°C)",
+  "H_mean" = "Mean Relative Humidity"
 )
+
+indicator_unit <- c(
+  "T_mean_day" = "°C",
+  "T_mean_night" = "°C", 
+  "T_mean"= "°C",
+  "T_max_day"= "°C", 
+  "UHI_day" = "°C",
+  "UHI_night" = "°C",
+  "Tropical_night" = "",
+  "Summer_day" = "",
+  "Hot_day" = "",
+  "H_mean" = "%"
+)
+
+
 ```
 
 ```{r}
 ui <- fluidPage(
+  useShinyjs(),
   titlePanel("Stadtklima Thun/Steffisburg"),
   sidebarLayout(
     sidebarPanel(
-      radioButtons("month", "Select Month", choices = c("May-September" = "MJJAS", "July-September" = "JAS", unique(monthly_data$month)), selected = "MJJAS", inline = TRUE),
-      radioButtons("indicator", "Select Indicator", choices = c("T_mean_day", "UHI_day", "UHI_night", "Tropical_night", "Summer_day", "Hot_day", "H_mean"), selected = "T_mean_day", inline = TRUE)
+      radioButtons("month", "Select Month", 
+                   choices = c("MJJAS" = "MJJAS", 
+                               "JAS" = "JAS", 
+                               "May" = "5",
+                               "Jun" = "6",
+                               "Jul" = "7",
+                               "Aug" = "8",
+                               "Sep" = "9",
+                               "Oct" = "10",
+                               "custom" = "custom"), 
+                   selected = "MJJAS", inline = TRUE),
+      conditionalPanel(
+        condition = "input.month == 'custom'",
+        # textInput("start_day", "Start (mm/dd)", placeholder = "06/21"),
+        # textInput("end_day", "End (dd)", placeholder = "08/05"),
+        # Date Input with Calendar Picker
+        dateInput("start_day", "Start Date:", value = as.Date("2024-06-21"), format = "mm/dd/yyyy"),
+        numericInput("start_offset", "Adjust Start Date (days):", value = 0, step = 1),
+        
+        dateInput("end_day", "End Date:", value = as.Date("2024-08-05"), format = "mm/dd/yyyy"),
+        numericInput("end_offset", "Adjust End Date (days):", value = 0, step = 1),
+      
+        actionButton("apply_custom_timerange", "Apply")  # New Apply button
+      ),
+      radioButtons("indicator", "Select Indicator", 
+                   choices = c("Mean Day Temperature" = "T_mean_day", 
+                               "Mean Night Temperature" = "T_mean_night", 
+                               "Mean Temperature" = "T_mean", 
+                               "Max Day Temperature" = "T_max_day", 
+                               "Urban Heat Island (Day)" = "UHI_day", 
+                               "Urban Heat Island (Night)" = "UHI_night", 
+                               "Tropical Night" = "Tropical_night", 
+                               "Summer Day" = "Summer_day", 
+                               "Hot Day" = "Hot_day", 
+                               "Mean Humidity" = "H_mean"), 
+                   selected = "T_mean_day", inline = TRUE),
+      hr(),  # Horizontal line for separation
+      h4("Diurnal Variation"),
+      plotlyOutput("plot_diurnal_timeseries ", height = "300px")  # Add the Plotly plot here
     ),
     mainPanel(
-      leafletOutput("map")
+      leafletOutput("map", height = "90vh") # Make map fill the window height
     )
   )
 )
 
 server <- function(input, output, session) {
   
+  # Reactive variables
+  #-----------------------------------
+  ## Custom date range
+  start_day <- reactive({
+    req(input$start_day)  # Ensure input is available
+    as.Date(paste0("2024-", input$start_day), format = "%Y-%m/%d")
+  })
+
+  end_day <- reactive({
+    req(input$end_day)  # Ensure input is available
+    as.Date(paste0("2024-", input$end_day), format = "%Y-%m/%d")
+  })
+  
+  ## Compute global min/max for all indicators to ensure consistent color scale
+  global_min_max <- reactive({
+    list(
+      T_mean_day = range(data_long_daily_meta$T_mean_day, na.rm = TRUE),
+      T_mean_night = range(data_long_daily_meta$T_mean_night, na.rm = TRUE),
+      T_mean = range(data_long_daily_meta$T_mean, na.rm = TRUE),
+      T_max_day = range(data_long_daily_meta$T_max_day, na.rm = TRUE),
+      UHI_day = range(data_long_daily_meta$UHI_day, na.rm = TRUE),
+      UHI_night = range(data_long_daily_meta$UHI_night, na.rm = TRUE),
+      Tropical_night = range(data_long_daily_meta$Tropical_night, na.rm = TRUE),
+      Summer_day = range(data_long_daily_meta$Summer_day, na.rm = TRUE),
+      Hot_day = range(data_long_daily_meta$Hot_day, na.rm = TRUE),
+      H_mean = range(data_long_daily_meta$H_mean, na.rm = TRUE)
+    )
+  })
+  
+  # Start and end date of custom time range
+  start_date <- reactive({
+    req(input$start_day)  # Ensure input is available
+    as.Date(paste0("2024-", input$start_day), format = "%Y-%m/%d")
+  })
+  end_date <- reactive({
+    req(input$end_day)  # Ensure input is available
+    as.Date(paste0("2024-", input$end_day), format = "%Y-%m/%d")
+  })
+  
+  # Dynamic data selection
+  #-----------------------------------
+  
   selected_data <- reactive({
     if (input$month == "MJJAS") {
       data_long_MJJAS_meta
     } else if (input$month == "JAS") {
       data_long_JAS_meta
+    }  else if (input$month == "custom") {
+      # Wait for Apply button to be clicked
+      isolate({
+        req(input$apply_custom_timerange)  # Ensure button is clicked before updating
+        
+        data_long_daily_meta |> 
+          filter(time_day >= start_date & time_day <= end_date) |>
+          group_by(month = month(time_day), Log_NR, NORD_CHTOPO, OST_CHTOPO, `3-type`, `LU_7-type`) |>
+          summarise(across(c(T_mean, T_mean_day, T_mean_night, H_mean, UHI_mean, UHI_day, UHI_night, HI_mean), 
+                           ~ mean(., na.rm = TRUE)),
+                    across(c(T_min, T_min_night, H_min, UHI_min, HI_min), ~ min(., na.rm = TRUE)),
+                    across(c(T_max, T_max_day, H_max, UHI_max, HI_max), ~ max(., na.rm = TRUE)),
+                    across(c(Tropical_night, Gfroerli_night, Summer_day, Hot_day, Very_hot_day), ~ sum(., na.rm = TRUE)),
+                    .groups = "drop") |>
+          mutate(across(everything(), ~ ifelse(is.nan(.)|is.infinite(.), NA, .)))
+      })
+    } else {
+      # Default selection logic
+      data_long_monthly_meta |> filter(month == as.numeric(input$month))
+    }
+  })
+  
+  selected_data_diurnal <- reactive({
+    if (input$month == "MJJAS") {
+      data_long_diurnal_MJJAS
+    } else if (input$month == "JAS") {
+      data_long_diurnal_JAS
+    } else if (input$month == "custom") {
+      isolate({
+        data_long_hourly |>
+        mutate(hour=hour(time_hour)) |>
+        filter(time_hour >= start_date & time_hour <= end_date) |>
+        group_by(hour, Log_NR) |>
+        summarise(across(c(T_mean, H_mean, UHI_mean, HI_mean), ~ mean(., na.rm = TRUE)),
+                  # add 95th upper and lower percentile
+                  T_mean_95 = quantile(T_mean, 0.95, na.rm = TRUE),
+                  T_mean_5 = quantile(T_mean, 0.05, na.rm = TRUE),
+                  UHI_mean_95 = quantile(UHI_mean, 0.95, na.rm = TRUE),
+                  UHI_mean_5 = quantile(UHI_mean, 0.05, na.rm = TRUE),
+                  .groups = "drop") |>
+        mutate(across(everything(), ~ ifelse(is.nan(.)|is.infinite(.), NA, .)))
+      })
     } else {
       data_long_monthly_meta |> filter(month == as.numeric(input$month))
     }
   })
   
-  output$map <- renderLeaflet({
-  data <- selected_data()
-  leaflet(data) |> 
-    addTiles() |> 
-    addCircleMarkers(
-      ~OST_CHTOPO, ~NORD_CHTOPO,
-      radius = 6,
-      color = "black", weight = 1, opacity = 1,
-      fillColor = ~colorNumeric(palette = "YlOrRd", domain = data[[input$indicator]])(data[[input$indicator]]),
-      fillOpacity = 1,
-      label = ~paste(Log_NR, "<br>", indicator_names[[input$indicator]], ": ", round(data[[input$indicator]], 2)),
-      group = input$indicator
-    ) |> 
-    addLegend(
-      "bottomright",
-      pal = colorNumeric(palette = "YlOrRd", domain = data[[input$indicator]]),
-      values = data[[input$indicator]],
-      title = indicator_names[[input$indicator]]
+  selected_data_ndays <- reactive({
+    # for each day in the selected time range, calculate the number of days with the selected indicator (Tropical_night, Gfroerli_night, Summer_day, Hot_day, Very_hot_day)
+    data_long_daily_meta |>
+      filter(time_day >= start_date & time_day <= end_date) |>
+      group_by(time_day) |>
+      summarise(across(c(Tropical_night, Gfroerli_night, Summer_day, Hot_day, Very_hot_day), ~ sum(., na.rm = TRUE)) |>
+                  mutate(across(everything(), ~ ifelse(is.nan(.)|is.infinite(.), NA, .)))
     )
+  })
+  
+  
+  # Outputs
+  #-----------------------------------
+  
+  # Plotly diurnal plot
+  output$plot_diurnal_timeseries <- renderPlotly({
+    if(input$indicator == "Tropical_night" | input$indicator == "Summer_day" | input$indicator == "Hot_day") {
+      data <- selected_data_ndays()
+      
+      req(data)  # Ensure there's data before proceeding
+      print("Attempting to plot barplot...")
+      
+      plot_ly(data, x = ~time_day, y = ~get(input$indicator), color = ~as.factor(Log_NR),
+              type = 'scatter', mode = 'lines+markers') %>%
+        layout(
+          title = paste("Number of ", indicator_label_legend[[input$indicator]]),
+          xaxis = list(title = "Date"),
+          yaxis = list(title = "Number of Days"),
+          legend = list(title = list(text = "Location ID"))
+        )
+    } else {
+      data <- selected_data_diurnal()
+      
+      req(data)  # Ensure there's data before proceeding
+            print("Attempting to plot diurnal plot...")
+      
+      plot_ly(data, x = ~hour, y = ~get(input$indicator), color = ~as.factor(Log_NR),
+              type = 'scatter', mode = 'lines+markers') %>%
+        layout(
+          title = paste("Diurnal Variation of ", indicator_label_legend[[input$indicator]]),
+          xaxis = list(title = "Hour of Day"),
+          yaxis = list(title = paste0(indicator_label_legend[[input$indicator]], " [", indicator_unit[[input$indicator]], "]")),
+          legend = list(title = list(text = "Location ID"))
+        )
+    }
+  })
+
+  # Leaflet map
+  output$map <- renderLeaflet({
+    data <- selected_data()
+    
+    # Get global min/max range for selected indicator
+    indicator_range <- if (input$indicator %in% c("UHI_day", "UHI_night")) {  # Adjust UHI range to be symmetric around zero
+      abs_max <- max(abs(global_min_max()[[input$indicator]]), na.rm = TRUE)  # Find largest absolute value
+      print(abs_max)
+      c(-abs_max, abs_max)  # Make range symmetric
+    } else {
+      print(global_min_max()[[input$indicator]])
+      global_min_max()[[input$indicator]]  # Use original range for other indicators
+    }
+    
+    # Define color palette dynamically based on selected indicator
+    color_pal <- if (input$indicator %in% c("T_mean_day", "T_mean_night", "T_mean", "T_max_day")) {
+      "YlOrRd"
+    } else if (input$indicator %in% c("UHI_day", "UHI_night")) {
+      "YlOrRd"
+    } else if (input$indicator %in% c("Tropical_night", "Summer_day", "Hot_day")) {
+      "Purples"
+    } else if (input$indicator == "H_mean") {
+      "BuGn"
+    } else {
+      "YlOrRd"
+    }
+    
+    leaflet(data, options = leafletOptions(zoomSnap = 0.3, zoomDelta = 0.3)) |>  # Finer zoom steps
+      addTiles() |> 
+      addCircleMarkers(
+        ~OST_CHTOPO, ~NORD_CHTOPO,
+        radius = 8,
+        color = "black", weight = 1, opacity = 1,
+        fillColor = ~colorNumeric(palette = color_pal, domain = data[[input$indicator]], na.color = "transparent")(data[[input$indicator]]),
+        fillOpacity = 1,
+        label = ~paste0("Location ID: ", Log_NR, "\n", 
+                       indicator_label_legend[[input$indicator]], ": ", 
+                       round(data[[input$indicator]], 2),  
+                       " [", indicator_unit[[input$indicator]], "]"),
+        group = input$indicator
+      ) |> 
+      addLegend(
+        "bottomright",
+        pal = colorNumeric(palette = color_pal, domain = data[[input$indicator]], na.color = "transparent"),
+        values = data[[input$indicator]],
+        title = paste0(indicator_label_legend[[input$indicator]], " [", indicator_unit[[input$indicator]], "]")
+      ) |> 
+      addEasyButton(easyButton(
+        icon = "fa-globe", title = "Reset Zoom",
+        onClick = JS("function(btn, map){ map.setView([47.5, 7.5], 10); }")
+      ))
   })
 }
 
