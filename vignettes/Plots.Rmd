@@ -15,11 +15,11 @@ library(cowplot)
 Plotly to have a first look
 ```{r}
 # Reshape UHI_diurnal to long format
-data_long_diurnal_meta <- data_long_diurnal |>
+data_long_diurnal_JAS_meta <- data_long_diurnal_JAS |>
   left_join(meta, by = "Log_NR")
 
 # Plotly of diurnal cycles of temperature and humidity
-ggplot_T_diurnal <- data_long_diurnal_meta |>
+ggplot_T_diurnal <- data_long_diurnal_JAS_meta |>
   ggplot(aes(x = hour, y = T_mean, group = Log_NR, color = `LU_7-type`)) +
   geom_line() +
   labs(title = "Diurnal Cycle of Temperature",
@@ -30,7 +30,7 @@ ggplot_T_diurnal <- data_long_diurnal_meta |>
   theme_minimal()
 ggplotly(ggplot_T_diurnal)
 
-ggplot_H_diurnal <- data_long_diurnal_meta |>
+ggplot_H_diurnal <- data_long_diurnal_JAS_meta |>
   ggplot(aes(x = hour, y = H_mean, color = Log_NR, group = `LU_7-type`)) +
   geom_line() +
   labs(title = "Diurnal Cycle of Humidity",
@@ -42,8 +42,8 @@ ggplot_H_diurnal <- data_long_diurnal_meta |>
 ggplotly(ggplot_H_diurnal)
 
 # Plotly diurnal cycles of UHI
-ggplot_UHI_diurnal <- data_long_diurnal_meta |>
-  ggplot(aes(x = hour, y = UHI_mean, color = Log_NR, group = `LU_7-type`)) +
+ggplot_UHI_diurnal <- data_long_diurnal_JAS_meta |>
+  ggplot(aes(x = time_day, y = UHI_mean, color = Log_NR, group = `LU_7-type`)) +
   geom_line() +
   labs(title = "Diurnal Cycle of Urban Heat Island",
        x = "Hour",
@@ -53,8 +53,9 @@ ggplot_UHI_diurnal <- data_long_diurnal_meta |>
   theme_minimal()
 ggplotly(ggplot_UHI_diurnal)
 
+# Plot daily temperatures
 Daily_summer_plot <- data_long_daily |>
-  ggplot(aes(x = date(day=day, month=month, year = 2024), y = T_mean, color = Log_NR)) +
+  ggplot(aes(x = time_day, y = T_mean_night, color = Log_NR)) +
   geom_line() +
   labs(title = "Daily Mean Temperature",
        x = "Date",
@@ -64,29 +65,31 @@ Daily_summer_plot <- data_long_daily |>
 
 ggplotly(Daily_summer_plot)
 
+# Plot hourly warming/cooling rates
+ggplot_warming <- data_long_hourly |>
+  ggplot(aes(x = time_hour, y = change_rate, color = Log_NR)) +
+  geom_line() +
+  labs(title = "Hourly Cooling/Warming Rate",
+       x = "Hour",
+       y = "Warming Rate [°C/h]",
+       color = "Logger") +
+  #scale_x_continuous(breaks = seq(0, 23, by = 1)) +
+  theme_minimal()
+ggplotly(ggplot_warming)
+
 ```
 
 ## Daily mean over the summer
 ```{r}
 # Daily mean temperature
-daily_summary_T <- T_mean_daily |>
-  pivot_longer(cols = starts_with("Log_"), names_to = "Logger", values_to = "Temperature") |>
-  group_by(date = date(time)) |>  # Summarize by date
+daily_summary <- data_long_daily |>
+  group_by(time_day) |>  # Summarize by date
   summarise(
-    mean_temp = mean(Temperature, na.rm = TRUE),
-    min_temp = min(Temperature, na.rm = TRUE),
-    max_temp = max(Temperature, na.rm = TRUE)
+    T_mean_day = mean(T_mean_day, na.rm = TRUE),
+    T_mean_night = mean(T_mean_night, na.rm = TRUE),
+    T_min = min(T_min, na.rm = TRUE),
+    T_max = max(T_max, na.rm = TRUE)
   ) 
-
-daily_summary_TH <- H_mean_daily |>
-  pivot_longer(cols = starts_with("Log_"), names_to = "Logger", values_to = "Humidity") |>
-  group_by(date = date(time)) |>  # Summarize by date
-  summarise(
-    mean_hum = mean(Humidity, na.rm = TRUE),
-    min_hum = min(Humidity, na.rm = TRUE),
-    max_hum = max(Humidity, na.rm = TRUE)
-  ) |>
-  full_join(daily_summary_T, by = "date")
 
 
 
@@ -113,6 +116,24 @@ humidity_plot <- ggplot(daily_summary_TH, aes(x = date)) +
   scale_color_manual(values = c("Mean Humidity" = "blue"))
 
 plot_grid(temperature_plot, humidity_plot, labels = c('A', 'B'), label_size = 12, align = "v", ncol = 1)
+
+
+temperature_plot <- ggplot(daily_summary, aes(x = time_day)) +
+  geom_line(aes(y = T_mean_day, color = "Tagesmittel"), linewidth = 1) +
+  geom_line(aes(y = T_mean_night, color = "Nachtmittel"), linewidth = 1) +
+  geom_line(aes(y = T_min, color = "Min./Max."), linewidth = 0.3) +
+  geom_line(aes(y = T_max, color = "Min./Max."), linewidth = 0.3) +
+  scale_y_continuous(name = "Temperature [°C]") +
+  labs(title = "Tägliche Temperaturwerte, gemittelt über alle Stationen",
+       x = "Datum",
+       color = "Legende") +
+  theme_minimal() +
+  scale_color_manual(values = c("Tagesmittel" = "darkred", "Min./Max." = "coral", "Nachtmittel" = "darkblue"))
+
+temperature_plot
+
+# ggsave
+ggsave("../figures/Thun_Gemeinderat/daily_T_plot.png", temperature_plot, width = 12, height = 4)
 ```
 
 
@@ -120,11 +141,18 @@ plot_grid(temperature_plot, humidity_plot, labels = c('A', 'B'), label_size = 12
 
 ## UHI diurnal cycle
 ```{r}
+# Prepare data
+data_long_diurnal_JAS_meta <- data_long_diurnal_JAS_meta |>
+  mutate(
+    `3-type` = factor(`3-type`, levels = c("urban", "rural", "water")),
+    `LU_7-type` = factor(`LU_7-type`, levels = c("dense urban", "green urban", "rural", "forest", "low green", "water")),
+    shifted_hour = (hour + 12) %% 24
+  )
+
 # 6-type landcover
-data_long_diurnal_meta|>
+data_long_diurnal_JAS_meta|>
   group_by(hour, `LU_7-type`) |>
   summarize(UHI = mean(UHI_mean, na.rm = TRUE)) |>
-  mutate(`LU_7-type` = factor(`LU_7-type`, levels = c("dense urban", "green urban", "rural", "forest", "low green", "water"))) |>
   ggplot(aes(x = hour, y = UHI, color = `LU_7-type`)) +
   geom_hline(yintercept = 0, color = "black", linewidth = 0.1) +
   geom_line(linewidth=1) +
@@ -137,24 +165,254 @@ data_long_diurnal_meta|>
   scale_color_manual(values = c("black", "brown", "orange", "darkgreen", "#44dd55", "#2255cc")) +
   theme_minimal()
 
-# 6-type landcover
-data_long_diurnal_meta|>
-  group_by(hour, `3-type`) |>
+
+UHI_diurnal_plot1 <- data_long_diurnal_JAS_meta |>
+  group_by(shifted_hour, `3-type`) |>
   summarize(UHI = mean(UHI_mean, na.rm = TRUE)) |>
-  mutate(`3-type` = factor(`3-type`, levels = c("urban", "rural", "water"))) |>
-  ggplot(aes(x = hour, y = UHI, color = `3-type`)) +
+  ggplot(aes(x = shifted_hour, y = UHI, color = `3-type`)) +
   geom_hline(yintercept = 0, color = "black", linewidth = 0.1) +
-  geom_line(linewidth=1) +
-  labs(title = "Urban Heat Island",
-       subtitle = "Reference: MeteoSchweiz 3m, Allmendingen",
-       x = "Hour",
-       y = "UHI [°C]",
-       color = "Land Use Type") +
-  scale_x_continuous(breaks = seq(0, 23, by = 2)) +
-  scale_color_manual(values = c("#772205", "#559944", "#2255cc")) +
-  theme_minimal()
+  geom_line(linewidth = 1) +
+  labs(
+    title = "Städtischer Wärmeeinseleffekt Thun/Steffisburg Juli-September 2024",
+    subtitle = "Referenz: MeteoSchweiz 3m, Allmendingen",
+    x = "Tageszeit",
+    y = "UHI [°C]",
+    color = "Landnutzung"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 23, by = 2),
+    labels = c(seq(12, 23, by = 2), seq(0, 11, by = 2))
+  ) +
+  scale_color_manual(values = c("grey20", "#559944", "#2288cc"),
+                     labels = c("bebaut", "ländlich/unbebaut", "Wasser") ) +
+  theme_minimal() +
+    theme(
+    legend.position = "right",
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10)
+  )
+UHI_diurnal_plot1
 
 
+UHI_diurnal_plot2 <- data_long_diurnal_JAS_meta |>
+  group_by(shifted_hour, `3-type`) |>
+  summarize(
+    UHI = mean(UHI_mean, na.rm = TRUE),
+    UHI_sd = sd(UHI_mean, na.rm = TRUE)
+  ) |>
+  ggplot(aes(x = shifted_hour, y = UHI, color = `3-type`, fill = `3-type`)) +
+  geom_ribbon(aes(ymin = UHI - UHI_sd, ymax = UHI + UHI_sd), alpha = 0.2, color = NA, show.legend = FALSE) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.1) +
+  labs(
+    title = "Städtischer Wärmeeinseleffekt Thun/Steffisburg Juli-September 2024",
+    subtitle = "Referenz: MeteoSchweiz 3m, Allmendingen",
+    x = "Tageszeit",
+    y = "UHI [°C]",
+    color = "Landnutzung"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 23, by = 2),
+    labels = c(seq(12, 23, by = 2), seq(0, 11, by = 2)),
+    #limits = as.factor(c(12, 11))  # Set the limits for the x-axis from 0 to 23
+  ) +
+  scale_color_manual(
+    values = c("grey20", "#559944", "#2288cc"),
+    labels = c("bebaut", "ländlich/unbebaut", "Wasser")
+  ) +
+  scale_fill_manual(
+    values = c("grey20", "#559944", "#2288cc"),
+    labels = c("bebaut", "ländlich/unbebaut", "Wasser")
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10)
+  )
+UHI_diurnal_plot2
+
+
+UHI_diurnal_plot3 <- data_long_diurnal_JAS_meta |>
+  group_by(shifted_hour, `LU_7-type`) |>
+  summarize(
+    UHI = mean(UHI_mean, na.rm = TRUE),
+    UHI_lower = quantile(UHI_mean, probs = 0.05, na.rm = TRUE), # 5th percentile
+    UHI_upper = quantile(UHI_mean, probs = 0.95, na.rm = TRUE)  # 95th percentile
+  ) |>
+  filter(`LU_7-type` %in% c("dense urban", "green urban", "forest", "water")) |>
+  ggplot(aes(x = shifted_hour, y = UHI, color = `LU_7-type`, fill = `LU_7-type`)) +
+  #geom_ribbon(aes(ymin = UHI_lower, ymax = UHI_upper), alpha = 0.2, color = NA, show.legend = FALSE) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.1) +
+  labs(
+    title = "Städtischer Wärmeeinseleffekt Thun/Steffisburg Juli-September 2024",
+    subtitle = "Referenz: MeteoSchweiz 3m, Allmendingen",
+    x = "Tageszeit",
+    y = "UHI [°C]",
+    color = "Landnutzung"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 23, by = 2),
+    labels = c(seq(12, 23, by = 2), seq(0, 11, by = 2))
+  ) +
+  scale_y_continuous(limits = c(-2.5, 3)) +
+  scale_color_manual(
+    values = c("grey20", "orange", "darkgreen", "#2288cc"),
+    labels = c("dichte Bebauung", "grüne Bebauung", "Wald", "Wasser")
+  ) +
+  scale_fill_manual(
+    values = c("grey20", "orange", "darkgreen", "#2288cc"),
+    labels = c("dichte Bebauung", "grüne Bebauung", "Wald", "Wasser")
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10)
+  )
+
+UHI_diurnal_plot3
+
+UHI_diurnal_plot3.2 <- data_long_diurnal_JAS_meta |>
+  group_by(shifted_hour, `LU_7-type`) |>
+  summarize(
+    UHI = mean(UHI_mean, na.rm = TRUE),
+    UHI_95 = max(UHI_mean_95, na.rm = TRUE),
+    UHI_5 = max(UHI_mean_5, na.rm = TRUE)
+    # UHI_lower = quantile(UHI_mean, probs = 0.05, na.rm = TRUE), # 5th percentile
+    # UHI_upper = quantile(UHI_mean, probs = 0.95, na.rm = TRUE)  # 95th percentile
+  ) |>
+  filter(`LU_7-type` %in% c("dense urban", "green urban", "forest", "water")) |>
+  ggplot(aes(x = shifted_hour, y = UHI, color = `LU_7-type`, fill = `LU_7-type`)) +
+  geom_ribbon(aes(ymin = UHI_5, ymax = UHI_95), alpha = 0.2, color = NA, show.legend = FALSE) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.1) +
+  labs(
+    title = "Städtischer Wärmeeinseleffekt Thun/Steffisburg Juli-September 2024",
+    subtitle = "Referenz: MeteoSchweiz 3m, Allmendingen",
+    x = "Tageszeit",
+    y = "UHI [°C]",
+    color = "Landnutzung"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 23, by = 2),
+    labels = c(seq(12, 23, by = 2), seq(0, 11, by = 2))
+  ) +
+  scale_y_continuous(limits = c(-2.5, 3)) +
+  scale_color_manual(
+    values = c("grey20", "orange", "darkgreen", "#2288cc"),
+    labels = c("dichte Bebauung", "grüne Bebauung", "Wald", "Wasser")
+  ) +
+  scale_fill_manual(
+    values = c("grey20", "orange", "darkgreen", "#2288cc"),
+    labels = c("dichte Bebauung", "grüne Bebauung", "Wald", "Wasser")
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10)
+  )
+
+UHI_diurnal_plot3.2
+
+
+example_stations <- data_long_diurnal_JAS_meta |>
+  filter(Log_NR %in% c("Log_403", "Log_408", "Log_422", "Log_412"))
+
+LU_groups <- data_long_diurnal_JAS_meta |>
+  group_by(shifted_hour, `LU_7-type`) |>
+  summarize(
+    UHI_mean = mean(UHI_mean, na.rm = TRUE),
+    UHI_sd = sd(UHI_mean, na.rm = TRUE)
+  ) |>
+  filter(`LU_7-type` %in% c("dense urban", "green urban", "forest", "water")) 
+
+UHI_diurnal_plot4 <- ggplot() +
+  # geom_ribbon(data=LU_groups, aes(x = shifted_hour, y = UHI_mean, 
+  #                                 fill = `LU_7-type`), 
+  #                                 ymin = UHI_mean - UHI_sd, ymax = UHI_mean + UHI_sd,
+  #             alpha = 0.2, color = NA, show.legend = FALSE) +
+  geom_line(data=example_stations, aes(x = shifted_hour, y = UHI_mean, color = `LU_7-type`),
+    linewidth = 1) +
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.1) +
+  labs(
+    title = "Städtischer Wärmeeinseleffekt Thun/Steffisburg Juli-September 2024",
+    subtitle = "Referenz: MeteoSchweiz 3m, Allmendingen",
+    x = "Tageszeit",
+    y = "UHI [°C]",
+    color = "Standort"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 23, by = 2),
+    labels = c(seq(12, 23, by = 2), seq(0, 11, by = 2)),
+    #limits = as.factor(c(12, 11))  # Set the limits for the x-axis from 0 to 23
+  ) +
+  scale_y_continuous(limits = c(-2.5, 3)) +
+  scale_color_manual(
+    values = c("grey20", "orange", "darkgreen", "#2288cc"),
+    labels = c("Innenstadt", "Lerchenfeld", "Burgerwald", "Strandbad           ")
+  ) +
+  scale_fill_manual(
+    values = c("grey20", "orange", "darkgreen", "#2288cc"),
+    labels = c("Innenstadt", "Lerchenfeld", "Burgerwald", "Strandbad")
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10)
+  )
+UHI_diurnal_plot4
+
+# save as pdf and png to 
+ggsave("../figures/Thun_Gemeinderat/UHI_diurnal_plot1.png", UHI_diurnal_plot1, width = 8, height = 4.8)
+ggsave("../figures/Thun_Gemeinderat/UHI_diurnal_plot2.png", UHI_diurnal_plot2, width = 8, height = 4.8)
+ggsave("../figures/Thun_Gemeinderat/UHI_diurnal_plot3.png", UHI_diurnal_plot3, width = 8, height = 4.8)
+ggsave("../figures/Thun_Gemeinderat/UHI_diurnal_plot4.png", UHI_diurnal_plot4, width = 8, height = 4.8)
+
+
+
+data_long_diurnal_JAS_meta |>
+  mutate(shifted_hour = as.factor(shifted_hour)) |>
+  filter(`LU_7-type` %in% c("dense urban", "green urban", "forest", "water")) |>
+  ggplot(aes(x = shifted_hour, y = UHI_mean, fill = `LU_7-type`)) +
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.05) +
+  geom_boxplot(
+    position = position_dodge(width = 0.8), # Separate the boxplots at each hour
+    outliers = FALSE,
+    # outlier.size = 1,
+    # outlier.shape = 21,
+    alpha = 0.7
+  ) +
+  labs(
+    title = "Städtischer Wärmeeinseleffekt",
+    subtitle = "Referenz: MeteoSchweiz 3m, Allmendingen",
+    x = "Tageszeit",
+    y = "UHI [°C]",
+    fill = "Landnutzung"
+  ) +
+  scale_fill_manual(
+    values = c("grey20", "orange", "darkgreen", "#2288cc"),
+    labels = c("dichte Bebauung", "grüne Bebauung", "Wald", "Wasser")
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid.major.x = element_blank(), # Remove vertical gridlines for cleaner look
+    panel.grid.minor.x = element_blank(),
+    #axis.text.x = element_text(size = 10, angle = 45, hjust = 1) # Rotate x-axis labels for readability
+  )
 ```
 # Heat Index diurnal cycle
 ```{r}
