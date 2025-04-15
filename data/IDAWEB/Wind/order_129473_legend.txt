@@ -1,0 +1,49 @@
+Bundesamt für Meteorologie und Klimatologie, MeteoSchweiz
+Operation Center 1
+Postfach 257
+8058 Zürich-Flughafen
+
+stn yyyyMMddHHmm
+
+stn Stationskürzel
+y   Jahr
+M   Monat
+d   Tag
+H   Stunde
+m   Minute
+
+Zeitangaben in UTC: 00:40 UTC = 02:40 Sommerzeit
+                              = 01:40 Winterzeit
+
+Zeitbezug bei Stundenwerten, sofern in der Parameterbeschreibung nicht anders vermerkt: HH  = (HH-1):01 - HH:00
+Beispiel: 13 = beinhaltet Messperiode von 12:01 bis 13:00 
+
+Fehlende Messwerte sind gekenntzeichnet mit '-'
+
+Qualitätsinformationen: Die Legende zu den Qualitätsinformationen ist zu finden unter: https://gate.meteoswiss.ch/idaweb/text/datenqualitaet_legende_de.pdf
+
+ 
+
+
+
+
+Stationen
+---------
+stn       Name                                 Parameter        Datenquelle                                        Länge/Breite             Koordinaten [km] Höhe ü. M. [m]
+THU       Thun                                 fu3010h0         MeteoSchweiz                                       7°35'/46°45'             611200/177640    570
+THU       Thun                                 dkl010h0         MeteoSchweiz                                       7°35'/46°45'             611200/177640    570
+THU       Thun                                 fkl010z0         MeteoSchweiz                                       7°35'/46°45'             611200/177640    570
+THU       Thun                                 fu3010z0         MeteoSchweiz                                       7°35'/46°45'             611200/177640    570
+THU       Thun                                 dkl010z0         MeteoSchweiz                                       7°35'/46°45'             611200/177640    570
+THU       Thun                                 dkl010d0         MeteoSchweiz                                       7°35'/46°45'             611200/177640    570
+
+Parameter
+---------
+          Einheit                              Beschreibung
+fu3010h0  km/h                                 Windgeschwindigkeit skalar; Stundenmittel in km/h
+dkl010h0  °                                    Windrichtung; Stundenmittel
+fkl010z0  m/s                                  Windgeschwindigkeit skalar; Zehnminutenmittel in m/s
+fu3010z0  km/h                                 Windgeschwindigkeit; Zehnminutenmittel in km/h
+dkl010z0  °                                    Windrichtung; Zehnminutenmittel
+dkl010d0  °                                    Windrichtung; Tagesmittel
+

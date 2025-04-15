@@ -1,0 +1,57 @@
+Bundesamt für Meteorologie und Klimatologie, MeteoSchweiz
+Operation Center 1
+Postfach 257
+8058 Zürich-Flughafen
+
+stn yyyyMMddHHmm
+
+stn Stationskürzel
+y   Jahr
+M   Monat
+d   Tag
+H   Stunde
+m   Minute
+
+Zeitangaben in UTC: 00:40 UTC = 02:40 Sommerzeit
+                              = 01:40 Winterzeit
+
+Zeitbezug bei Stundenwerten, sofern in der Parameterbeschreibung nicht anders vermerkt: HH  = (HH-1):01 - HH:00
+Beispiel: 13 = beinhaltet Messperiode von 12:01 bis 13:00 
+
+Fehlende Messwerte sind gekenntzeichnet mit '-'
+
+Qualitätsinformationen: Die Legende zu den Qualitätsinformationen ist zu finden unter: https://gate.meteoswiss.ch/idaweb/text/datenqualitaet_legende_de.pdf
+
+ 
+
+
+
+
+Stationen
+---------
+stn       Name                                 Parameter        Datenquelle                                        Länge/Breite             Koordinaten [km] Höhe ü. M. [m]
+RHW       Rheinwaldhorn                        wkcap2d0         MeteoSchweiz                                       9°02'/46°30'             722951/150423    3402
+RHW       Rheinwaldhorn                        wkcap3d0         MeteoSchweiz                                       9°02'/46°30'             722951/150423    3402
+RHW       Rheinwaldhorn                        wkcap1d0         MeteoSchweiz                                       9°02'/46°30'             722951/150423    3402
+RHW       Rheinwaldhorn                        wkwtg1d0         MeteoSchweiz                                       9°02'/46°30'             722951/150423    3402
+RHW       Rheinwaldhorn                        wkwtp1d0         MeteoSchweiz                                       9°02'/46°30'             722951/150423    3402
+RHW       Rheinwaldhorn                        wkwtg2d0         MeteoSchweiz                                       9°02'/46°30'             722951/150423    3402
+RHW       Rheinwaldhorn                        wkwtp2d0         MeteoSchweiz                                       9°02'/46°30'             722951/150423    3402
+RHW       Rheinwaldhorn                        wkwtg3d0         MeteoSchweiz                                       9°02'/46°30'             722951/150423    3402
+RHW       Rheinwaldhorn                        wkwtp3d0         MeteoSchweiz                                       9°02'/46°30'             722951/150423    3402
+RHW       Rheinwaldhorn                        wkwtg0d0         MeteoSchweiz                                       9°02'/46°30'             722951/150423    3402
+
+Parameter
+---------
+          Einheit                              Beschreibung
+wkcap2d0  Code                                 CAP/PCACA mit 18 Klassen basierend auf Bodendruck (3E-20E,41N-52N)
+wkcap3d0  Code                                 CAP/PCACA mit 27 Klassen basierend auf Bodendruck (3E-20E,41N-52N)
+wkcap1d0  Code                                 CAP/PCACA mit 9 Klassen basierend auf Bodendruck (3E-20E,41N-52N)
+wkwtg1d0  Code                                 GWT mit 10 Klassen basierend auf 500hPa Geopotential (3E-20E,41N-52N)
+wkwtp1d0  Code                                 GWT mit 10 Klassen basierend auf Bodendruck (3E-20E,41N-52N)
+wkwtg2d0  Code                                 GWT mit 18 Klassen basierend auf 500hPa Geopotential (3E-20E,41N-52N)
+wkwtp2d0  Code                                 GWT mit 18 Klassen basierend auf Bodendruck (3E-20E,41N-52N)
+wkwtg3d0  Code                                 GWT mit 26 Klassen basierend auf 500hPa Geopotential (3E-20E,41N-52N)
+wkwtp3d0  Code                                 GWT mit 26 Klassen basierend auf Bodendruck (3E-20E,41N-52N)
+wkwtg0d0  Code                                 GWT mit 8 Klassen basierend auf 500hPa Geopotential (5E-12E,45N-49N)
+
