@@ -36,7 +36,7 @@ Logger_data <- function(city = "Bern",
     print("Get data for Bern")}
 
   if(tolower(city) == "thun"){
-    meta <- read_csv('../Metadata/Thun/metadata_Thun.csv', show_col_types = FALSE)
+    meta <- read_csv('../data/Metadata/metadata_Thun.csv', show_col_types = FALSE)
     print("Get data for Thun")}
 
   if(tolower(city) == "biel"){
