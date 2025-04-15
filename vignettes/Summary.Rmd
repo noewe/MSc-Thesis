@@ -25,7 +25,7 @@ year <- 2024
 # date_start = "2024-06-01"
 # date_end = "2024-08-31"
 date_start = "2024-05-01"
-date_end = "2024-09-30"
+date_end = "2024-10-30"
 date_start = as.Date(date_start, tz = "Europe/Zurich")
 date_end = as.Date(date_end, tz = "Europe/Zurich")
 
@@ -43,8 +43,8 @@ ndays
 
 ```{r}
 # Define Data and Metadata
-data_T <- read_csv("../data/Thun Messnetz 2024/Logger_data_T_2024-05-01_2024-09-30.csv")
-data_H <- read_csv("../data/Thun Messnetz 2024/Logger_data_H_2024-05-01_2024-09-30.csv")
+data_T <- read_csv("../data/Thun Messnetz 2024/Logger_data_T_2024-05-01_2024-10-30.csv")
+data_H <- read_csv("../data/Thun Messnetz 2024/Logger_data_H_2024-05-01_2024-10-30.csv")
 
 meta <- read_csv('../data/Metadata/metadata_Thun.csv', show_col_types = FALSE)
 meta_LU <- read_csv('../data/Metadata/Land_Use_Thun.csv', show_col_types = FALSE)
@@ -106,11 +106,6 @@ visdat::vis_miss(
   cluster = FALSE, 
   warn_large_data = FALSE
   )
-visdat::vis_miss(
-  data_H, #your table
-  cluster = FALSE, 
-  warn_large_data = FALSE
-  )
 ```
 
 # Summarize the data
@@ -139,7 +134,14 @@ data_long <- data_long |>
   mutate(UHI = Temperature - Temperature_401) |>
   select(-Temperature_401) |>
   # Heat Index
-  mutate(Heat_Index = heat.index(t = Temperature, rh = Humidity, temperature.metric = "celsius", output.metric = "celsius", round = 2))
+  mutate(Heat_Index = heat.index(t = Temperature, rh = Humidity, temperature.metric = "celsius", output.metric = "celsius", round = 2)) 
+
+#calculate cooling rate
+data_long <- data_long |>
+  group_by(Log_NR) |>
+  mutate(change_rate = c(NA, diff(x = Temperature, k = 1)))
+
+write_csv(data_long, (paste0("../data/Thun Messnetz 2024/10min_long_", date_start, "_", date_end, ".csv")))
 ```
 
 ## Aggregate the data
@@ -147,8 +149,14 @@ data_long <- data_long |>
 ### Hourly
 ```{r}
 ## Aggregate hourly, this may take long (like 2mins)
+
+# According to MeteoCH, the aggregation should be like this:
+# HH = (HH-1):01 to HH:00
+# E.g., 13 includes 12:01 to 13:00
+
 data_long_hourly <- data_long |>
-  mutate(time_hour = floor_date(time, unit = "hour")) |> # round to nearest hour (floor)
+  #mutate(time_hour = floor_date(time, unit = "hour")) |> # round to nearest hour (floor)
+  mutate(time_hour = floor_date(time - minutes(1), unit = "hour") + hours(1)) |>
   group_by(time_hour, Log_NR) |>
   summarise(
     T_mean = mean(Temperature, na.rm = TRUE),
@@ -183,13 +191,21 @@ data_long_hourly <- data_long_hourly |>
   #mutate(Heat_Index_hourly = heat.index(t = Temperature, rh = Humidity, temperature.metric = "celsius", output.metric = "celsius", round = 2)) 
   # Checkt if there is a difference between the hourly and the daily calculation - there is one
   #mutate(UHI_diff = round(UHI - UHI_hourly, 2), Heat_Index_diff = round(Heat_Index - Heat_Index_hourly, 2))
+
+#calculate cooling rate
+data_long_hourly <- data_long_hourly |>
+  group_by(Log_NR) |>
+  mutate(change_rate = c(NA, diff(x = T_mean, k = 1)))
+
+#save as csv and excel
+write_csv(data_long_hourly, (paste0("../data/Thun Messnetz 2024/Thun_hourly_summary_", date_start, "_", date_end, ".csv")))
 ```
 
 ### Diurnal
 ```{r}
-data_long_diurnal_MJJAS <- data_long_hourly |>
+data_long_diurnal_MJJASO <- data_long_hourly |>
   mutate(hour=hour(time_hour)) |>
-  filter(month(time_hour) %in% c(5:9)) |>
+  filter(month(time_hour) %in% c(5:10)) |>
   group_by(hour, Log_NR) |>
   summarise(across(c(T_mean, H_mean, UHI_mean, HI_mean), ~ mean(., na.rm = TRUE)),
             .groups = "drop") |>
@@ -200,8 +216,16 @@ data_long_diurnal_JAS <- data_long_hourly |>
   filter(month(time_hour) %in% c(7:9)) |>
   group_by(hour, Log_NR) |>
   summarise(across(c(T_mean, H_mean, UHI_mean, HI_mean), ~ mean(., na.rm = TRUE)),
+            # add 95th upper and lower percentile
+            T_mean_95 = quantile(T_mean, 0.95, na.rm = TRUE),
+            T_mean_5 = quantile(T_mean, 0.05, na.rm = TRUE),
+            UHI_mean_95 = quantile(UHI_mean, 0.95, na.rm = TRUE),
+            UHI_mean_5 = quantile(UHI_mean, 0.05, na.rm = TRUE),
             .groups = "drop") |>
   mutate(across(everything(), ~ ifelse(is.nan(.)|is.infinite(.), NA, .)))
+
+write_csv(data_long_diurnal_MJJASO, (paste0("../data/Thun Messnetz 2024/Thun_diurnal_MJJASO.csv")))
+write_csv(data_long_diurnal_JAS, (paste0("../data/Thun Messnetz 2024/Thun_diurnal_JAS.csv")))
 ```
 
 ### Daily
@@ -209,7 +233,7 @@ data_long_diurnal_JAS <- data_long_hourly |>
 ## Aggregate daily
 ### 1. Data aggregated from hourly data: Mean values. This compensates for missing 10-min data points if some hours have more NA values than others.
 data_long_daily <- data_long_hourly |>
-  mutate(time_day = floor_date(time_hour, unit = "day")) |> # round to day (floor)
+  mutate(time_day = date(time_hour - hours(1))) |> # 01:00 (current day) to 00:00 (next day) is aggregated
   group_by(time_day, Log_NR) |>
   summarise(valid_hours = sum(!is.na(T_mean)), # Calculate valid hours as number of hours per day that contain data (not NA)
             across(c(T_mean, H_mean, UHI_mean, HI_mean), ~ mean(., na.rm = TRUE)),
@@ -217,7 +241,7 @@ data_long_daily <- data_long_hourly |>
             across(c(T_max, H_max, UHI_max, HI_max), ~ max(., na.rm = TRUE)),
             .groups = "drop") |>
   mutate(across(everything(), ~ ifelse(is.nan(.)|is.infinite(.), NA, .))) |>
-  mutate(time_day = as.POSIXct(time_day, origin = "1970-01-01", tz = target_timezone)) # Re-convert to POSIXct object
+  mutate(time_day = as.POSIXct(time_day, origin = "2024-05-01", format = "%Y-%m-%d", tz = target_timezone)) # Re-convert to POSIXct object
 
 
 ### 2. Re-calculate UHI from daily means
@@ -233,7 +257,7 @@ data_long_daily2 <- data_long_daily |>
   select(-Temperature_401) 
 
 
-### 3. Nighttime values and indicators (21:00 - 07:00): Tmin, Tropical Nights, Gfrörli Nights
+### 3. Nighttime values and indicators (21:00 - 07:00) following day: Tmin, Tropical Nights, Gfrörli Nights
 data_long_daily_night1 <- data_long_hourly |>
   mutate(timeshift = time_hour - dhours(7),
          time_day = floor_date(time_hour, unit = "day")) |> # 07 is the new 00
@@ -249,7 +273,7 @@ data_long_daily_night1 <- data_long_hourly |>
          Gfroerli_night = ifelse(T_min_night <= 10 & T_min_night >= 0, 1, 0)) 
 
 
-### 4. Nighttime values and indicators (22:00 - 06:00): T_mean, nighttime UHI
+### 4. Nighttime values and indicators (22:00 - 06:00 following day): T_mean, nighttime UHI
 data_long_daily_night2 <- data_long_hourly |>
   mutate(timeshift = time_hour - dhours(6),
          time_day = floor_date(time_hour, unit = "day")) |> # 07 is the new 00
@@ -321,7 +345,15 @@ data_long_daily <- data_long_daily2 |>
   full_join(data_long_daily_night, by = c("time_day", "Log_NR")) |>
   full_join(data_long_daily_day, by = c("time_day", "Log_NR")) |>
   mutate(across(everything(), ~ ifelse(is.nan(.)|is.infinite(.), NA, .)),
-         time_day = as.POSIXct(time_day, origin = "1970-01-01", tz = target_timezone))
+         time_day = as.POSIXct(time_day, origin = "1970-01-01")) |>
+  # remove hours and minutes from time_day
+  mutate(time_day = as.POSIXct(format(time_day, "%Y-%m-%d"))) 
+
+# Delete unused dataframes
+rm(data_long_daily2, data_long_daily_night, data_long_daily_day, data_long_daily_night1, data_long_daily_night2, data_long_daily_day)
+
+
+write_csv(data_long_daily, (paste0("../data/Thun Messnetz 2024/Thun_daily_summary_", date_start, "_", date_end, ".csv")))
 ```
 
 ### Monthly
@@ -336,13 +368,15 @@ data_long_monthly <- data_long_daily |>
             across(c(Tropical_night, Gfroerli_night, Summer_day, Hot_day, Very_hot_day), ~ sum(., na.rm = TRUE)),
             .groups = "drop") |>
   mutate(across(everything(), ~ ifelse(is.nan(.)|is.infinite(.), NA, .)))
+
+write_csv(data_long_monthly, (paste0("../data/Thun Messnetz 2024/Thun_monthly_summary_", date_start, "_", date_end, ".csv")))
 ```
 
 ### Season
 ```{r}
 # Aggregate over whole time period
-data_long_MJJAS <- data_long_daily |>
-  filter(month(time_day) %in% c(5:9)) |>
+data_long_MJJASO <- data_long_daily |>
+  filter(month(time_day) %in% c(5:10)) |>
   group_by(Log_NR) |>
   summarise(across(c(T_mean, T_mean_day, T_mean_night, H_mean, UHI_mean, UHI_day, UHI_night, HI_mean), ~ mean(., na.rm = TRUE)),
             across(c(T_min, T_min_night, H_min, UHI_min, HI_min), ~ min(., na.rm = TRUE)),
@@ -360,6 +394,9 @@ data_long_JAS <- data_long_daily |>
             across(c(Tropical_night, Gfroerli_night, Summer_day, Hot_day, Very_hot_day), ~ sum(., na.rm = TRUE)),
             .groups = "drop") |>
   mutate(across(everything(), ~ ifelse(is.nan(.)|is.infinite(.), NA, .)))
+
+write_csv(data_long_MJJASO, (paste0("../data/Thun Messnetz 2024/Thun_MJJASO_summary_2024.csv")))
+write_csv(data_long_JAS, (paste0("../data/Thun Messnetz 2024/Thun_JAS_summary_2024.csv")))
 ```
 
 
@@ -377,19 +414,3 @@ Summary <- Summary |>
   distinct() #Remove identical rows
 ```
 
-```{r}
-# Remove stations that don't belong in the mean
-Summary_all <- Summary |>
-  # Remove Zollikofen 2m because we only want to map our 3m stations and stations with large errors or NAs
-    dplyr::filter(Location != ("Zollikofen 2m")) |>
-    dplyr::filter(Location != ("Ostermundigen BareTower")) |>
-    filter(!grepl("Postgasse", Location, ignore.case = TRUE)) # remove all Postgasse Loggers
-
-# Calculate mean over all stations
-Summary_all <- Summary_all |>
-  summarise_all(~ mean(., na.rm = TRUE)) 
-```
-
-```{r export, includ = F}
-write_csv(Summary, (paste0("../data/", city, "/Summary_T_", quality, "_", date_start, "_", date_end, ".csv")))
-```
