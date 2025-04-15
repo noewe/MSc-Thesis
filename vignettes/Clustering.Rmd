@@ -1,0 +1,152 @@
+---
+title: "Clustering"
+author: 'Noémie Wellinger'
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(blockcluster)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(lubridate)
+```
+
+```{r}
+# Setup
+cluster_variable <- "UHI_mean"
+```
+
+```{r}
+# Select data
+data_to_cluster <- data_long_hourly |>
+  select(time_hour, Log_NR, UHI_mean) |>
+   pivot_wider(names_from = Log_NR, values_from = UHI_mean)
+
+# Set time_hour as row names
+data_to_cluster <- as.data.frame(data_to_cluster)
+rownames(data_to_cluster) <- data_to_cluster$time_hour
+data_to_cluster$time_hour <- NULL
+#remove all rows that contain NA
+data_to_cluster <- data_to_cluster[complete.cases(data_to_cluster),]
+
+# Convert to matrix
+matrix_to_cluster <- as.matrix(data_to_cluster)
+
+# Ensure row names are preserved
+rownames(matrix_to_cluster) <- rownames(data_to_cluster)
+```
+
+```{r}
+# Define the number of clusters (tune this parameter)
+num_row_clusters <- 6  # Time periods 
+num_col_clusters <- 10  # Stations
+```
+
+```{r}
+# Run co-clustering
+result <- coclusterContinuous(matrix_to_cluster, nbcocluster = c(num_row_clusters, num_col_clusters))
+```
+
+```{r}
+plot(result)
+```
+
+```{r}
+# save the plot
+ggsave(paste0("../figures/Clusters/CoCluster_", num_col_clusters, "S_", num_row_clusters, "T.png"), cocluster_plot)
+```
+
+```{r}
+print(result@rowclass)  # Time clusters
+print(result@colclass)  # Station clusters
+```
+
+```{r}
+# Attach the cluster classes to the original data
+# Convert to data frames for merging
+
+# Extract row (time) and column (station) cluster assignments
+time_cluster_df <- data.frame(time_hour = rownames(matrix_to_cluster), time_cluster = result@rowclass)
+time_cluster_df$time_hour <- as.POSIXct(time_cluster_df$time_hour, format = "%Y-%m-%d %H:%M:%S", tz = "Europe/Zurich")
+station_cluster_df <- data.frame(Log_NR = colnames(matrix_to_cluster), station_cluster = result@colclass)
+
+# Merge time clusters with original data
+data_long_hourly_clusters <- data_long_hourly |>
+  left_join(time_cluster_df, by = "time_hour") |>
+  left_join(station_cluster_df, by = "Log_NR")
+```
+
+Mapping
+```{r}
+# group by time_cluster and Log_NR and summarize
+time_clusters_UHI <- data_long_hourly_clusters %>%
+  group_by(time_cluster, Log_NR) %>%
+  summarize(UHI_mean = mean(UHI_mean, na.rm = TRUE))
+  
+time_clusters_UHI <- time_clusters_UHI |>
+  left_join(meta, by = "Log_NR")
+```
+
+```{r}
+# for all the values of time_cluster, plot the UHI_mean
+for(i in 0:5){
+  p <- time_clusters_UHI |>
+    filter(time_cluster == i) |>
+    ggplot(aes(x = OST_CHTOPO, y = NORD_CHTOPO, color = UHI_mean)) +
+      geom_point() +
+      theme_minimal() +
+      labs(title = paste("Time Cluster", i), color = "Time Cluster") +
+      theme(legend.position = "bottom") +
+      # Use color palette RdYlBu with midpoint at 0
+      scale_color_gradient2(low = "blue", mid = "beige", high = "red", midpoint = 0, limits= c(-5, 5))
+  print(p)
+  
+  # save the plot
+  ggsave(paste0("../figures/Clusters/TimeCluster_", i, cluster_variable, ".png"), p)
+  }
+```
+
+```{r}
+# custom color palette for cluster values
+cluster_colors <- c('#66c2a5','#fc8d62','#8da0cb','#e78ac3','#a6d854','#ffd92f')
+
+# Look at the distribution of UHI_mean for each time cluster
+time_clusters_UHI |>
+  ggplot(aes(x = UHI_mean, fill = factor(time_cluster))) +
+  geom_density(alpha = 0.5) +
+  theme_minimal() +
+  labs(title = "Distribution of UHI_mean by Time Cluster", fill = "Time Cluster") +
+  theme(legend.position = "bottom") +
+  scale_fill_manual(values = cluster_colors)
+
+```
+
+```{r}
+# Plot the hour of day (y axis) and date (y axis) for each data point in data_long_hourly_clusters
+data_long_hourly_clusters |>
+  mutate(date = as.Date(time_hour),
+         hour = hour(time_hour)) |>
+  ggplot(aes(x = date, y = hour, fill = factor(time_cluster))) +
+  geom_tile() +
+  theme_minimal() +
+  labs(title = paste(cluster_variable, "Time Cluster Assignments"), fill = "Time Cluster") +
+  scale_fill_manual(values = cluster_colors)
+
+# same plot just for months August and September
+data_long_hourly_clusters |>
+  mutate(date = as.Date(time_hour),
+         hour = hour(time_hour)) |>
+  filter(date >= "2024-08-01" & date <= "2024-09-30") |>
+  ggplot() +
+  geom_tile(aes(x = date, y = hour, fill = factor(time_cluster))) +
+  theme_minimal() +
+  labs(title = paste(cluster_variable, "Time Cluster Assignments (August and September)"), fill = "Time Cluster") +
+  theme(legend.position = "bottom") +
+  scale_fill_manual(values = cluster_colors)
+  # plot a line with the average temperature for each day from daily_summary
+  #geom_line(data = daily_summary, aes(x = time_day, y = T_mean_day, color = "red"), size = 1) 
+
+```
+
