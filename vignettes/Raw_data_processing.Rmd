@@ -7,7 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 source("../R/load_packages.R")
-load_packages(c("dplyr", "ggplot2", "climaemet"))
+load_packages(c("dplyr", "ggplot2", "climaemet", "openair", "lubridate", "tidyverse"))
 ```
 Precipitation
 ```{r}
@@ -238,6 +238,8 @@ print(IDAWEB_final_df)
 write.csv(IDAWEB_final_df, "../data/IDAWEB/MeteoCH_Thun.csv")
 ```
 
+
+
 Classify wind and precipitation
 ```{r}
 MeteoCH_data <- read.csv("../data/IDAWEB/MeteoCH_Thun.csv")
@@ -283,10 +285,69 @@ write.csv(MeteoCH_data, "../data/IDAWEB/MeteoCH_Thun.csv")
 
 ```
 
-# Combine Meteo and Low Cost Sensor data
+# Extract station information from geospatial layers
+```{r}
+# read metadata
+meta <- read.csv("../data/Metadata/metadata_Thun.csv")
+
+# read land use data
+tiff_names <- list.files("../data/Geodata/LULCTopo_Thun/")
+print(tiff_names)
+tiff_paths <- paste0("../data/Geodata/LULCTopo_Thun/",tiff_names)
+tiffs <- terra::rast(tiff_paths)
+# Set layer names based on file names (without extension)
+names(tiffs) <- tools::file_path_sans_ext(tiff_names)
+
+spat_points <- meta |> dplyr::select(c(LV_03_E,LV_03_N))
+extracted <- terra::extract(tiffs,spat_points)
+
+meta <- meta |>
+  dplyr::bind_cols(extracted)
+
+str(meta)
+
+write.csv(meta, "../data/Metadata/metadata_Thun_geodata.csv")
+```
+Water temperature data
+```{r}
+Water_data <- read.csv(
+  "../data/external/Water - BAFU/2030_Wassertemperatur_10-Min-Mittel_2024-05-01_2024-09-30.csv",
+  skip = 9, # delete metadata
+  header = FALSE,
+  sep = ";",
+  dec = ".",
+  fill = TRUE,
+  fileEncoding = "latin1",  # Handles ä, ö, ü, ß etc.
+  col.names = c("Stationsname", "Stationsnummer", "Parameter", "Zeitreihe",
+                "Parametereinheit", "Gewässer", "Zeitstempel",
+                "Zeitpunkt_des_Auftretens", "Wert", "Freigabestatus") #There is a blank column in the csv. This code helps to prevent error
+)
+Water_data <- Water_data |>
+  mutate(time = as.POSIXct(Water_data$Zeitstempel, format = "%Y-%m-%d %H:%M:%S",  tz = "Europe/Zurich")) |>
+  select(time, water_temp = Wert)
+
+# Aggregate to hourly data
+Water_data_hourly <- Water_data |>
+    #mutate(time_hour = floor_date(time, unit = "hour")) |> # round to nearest hour (floor)
+  mutate(time = floor_date(time - minutes(1), unit = "hour") + hours(1)) |>
+  group_by(time) |>
+  summarise(water_temp = mean(water_temp, na.rm = TRUE))
+
+Water_data_daily_night <- Water_data_hourly |>
+  filter(hour(time) >= 22 | hour(time) <= 6) |>
+  # shift time 7h back
+  mutate(time = time - hours(7)) |>
+  group_by(time = as.Date(time)) |>
+  summarise(water_temp = mean(water_temp, na.rm = TRUE)) |>
+  ungroup()
+```
+
+
+
+# Combine all: Meteo, Water, Geospatial, Low Cost Sensor data, and Metadata
 ```{r}
 MeteoCH_data <- read.csv("../data/IDAWEB/MeteoCH_Thun.csv") |>
-  mutate(time = as.POSIXct(MeteoCH_data$time, format="%d.%m.%Y %H:%M", tz = "UTC")) |> 
+  mutate(time = as.POSIXct(time, format="%d.%m.%Y %H:%M", tz = "UTC")) |> 
   mutate(time = with_tz(time, tzone = "Europe/Zurich")) |> #should start at 2024-05-01 02:00
   select(-X.1, -X, -stn)
 
@@ -314,35 +375,112 @@ Thun_Network_data_daily <- read.csv("../data/Thun Messnetz 2024/Thun_daily_summa
   mutate(time_day = as.POSIXct(time_day, format = "%Y-%m-%dT%H:%M:%OS", tz="UTC")) |>
   mutate(time_day = with_tz(time_day, tzone = "Europe/Zurich")) |> #should start at 2024-05-01 02:00
   rename(time = time_day)
-  
-meta <- read.csv("../data/Metadata/metadata_Thun.csv") |>
-  mutate(Log_NR = paste0("Log_", Log_NR)) |>
-  dplyr::select(Log_NR, STANDORT, NORD_CHTOPO, OST_CHTOPO, LV_03_N, LV_03_E, HuM) |>
-  distinct(Log_NR, .keep_all = TRUE)
-land_use <- read.csv("../data/Metadata/Land_Use_Thun.csv")
+```
+
+# Aggregate the meteodata to daily nighttime data
+```{r}
+MeteoCH_data_daily_night <- MeteoCH_data_hourly |>
+  filter(hour(time) >= 22 | hour(time) <= 6) |>
+  # shift time 7h back
+  mutate(time = time - hours(7)) |>
+  group_by(date = as.Date(time)) |>
+  summarise(temp_air_2m = mean(temp_air_2m_h, na.rm = TRUE),
+            precip = sum(precip_last1h, na.rm = TRUE),
+            precip_boolean = ifelse(precip > 0.3, 1, 0),
+            RH_2m = mean(RH_2m_h, na.rm = TRUE),
+            #glob_rad = mean(glob_rad_h, na.rm = TRUE),
+            airpress = mean(airpress_h, na.rm = TRUE),
+            CAP9 = first(CAP9),
+            CAP18 = first(CAP18),
+            CAP27 = first(CAP27),
+            GWT8_Z500 = first(GWT8_Z500),
+            GWT10_SLP = first(GWT10_SLP),
+            GWT10_Z500 = first(GWT10_Z500),
+            GWT18_SLP = first(GWT18_SLP),
+            GWT18_Z500 = first(GWT18_Z500),
+            GWT26_SLP = first(GWT26_SLP),
+            GWT26_Z500 = first(GWT26_Z500)) |>
+  ungroup()
+
+# Daily global radiation
+glob_rad_daily <- MeteoCH_data_hourly |>
+  # shift time 7h back
+  mutate(time = time - hours(7)) |>
+  select(time, glob_rad_h) |>
+  group_by(date = as.Date(time)) |>
+  summarise(glob_rad = mean(glob_rad_h, na.rm = TRUE))
+
+# Merge the two dataframes
+MeteoCH_data_daily_night <- full_join(MeteoCH_data_daily_night, glob_rad_daily, by = "date")
+
+wind_df <- MeteoCH_data_hourly |>
+  filter(hour(time) >= 22 | hour(time) <= 6) |>
+  # shift time 7h back
+  mutate(time = time - hours(7)) |>
+  select(time, wind_dir_h, wind_vel_h_kmh) |>
+  rename(date = time,
+         wd = wind_dir_h,
+         ws = wind_vel_h_kmh)
+
+# summarize wind speed and direction using function "openair" package
+wind_df <- timeAverage(wind_df,
+                         avg.time = "day",
+                         statistic = "mean")
+
+# Merge the two dataframes
+MeteoCH_data_daily_night <- full_join(MeteoCH_data_daily_night, wind_df, by = "date") |>
+    mutate(wd_class = case_when(
+              wd < 22.5 & wd >= 337.5 ~ "N",
+              wd >= 22.5 & wd < 67.5 ~ "NE",
+              wd >= 67.5 & wd < 112.5 ~ "E",
+              wd >= 112.5 & wd < 157.5 ~ "SE",
+              wd >= 157.5 & wd < 202.5 ~ "S",
+              wd >= 202.5 & wd < 247.5 ~ "SW",
+              wd >= 247.5 & wd < 292.5 ~ "W",
+              wd >= 292.5 & wd < 337.5 ~ "NW"),
+           wd_NS = ifelse(wd > 90 & wd <= 270, "S", "N"),
+           Wind_S = ifelse(wd_NS == "S", 1, 0)) |>
+  rename(time = date)
+
+# Add Thun Network data
+all_data_daily_night <- full_join(MeteoCH_data_daily_night, Thun_Network_data_daily, by = "time")
+write.csv(all_data_daily_night, "../data/final_predictors/meteo_data_daily_night.csv")
+
 ```
 
 ```{r}
-# Combine the two dataframes: 10 minute data
-all_data_10min <- full_join(MeteoCH_data_10min, Thun_Network_data, by = "time")
-
-# add metadata
-all_data_10min <- all_data_10min |>
-  left_join(meta, by = c("Log_NR" = "Log_NR")) |>
-  left_join(land_use, by = c("Log_NR" = "Log_NR"))
+# Combine the three dataframes: 10 minute data
+all_data_10min <- full_join(MeteoCH_data_10min, Thun_Network_data, by = "time") |>
+  left_join(meta, by = "Log_NR") |>
+  left_join(Water_data, by = "time") 
+write.csv(all_data_10min, "../data/final_predictors/all_data_10min.csv")
 
 # hourly data
-all_data_hourly <- full_join(MeteoCH_data_hourly, Thun_Network_data_hourly, by = "time")
-# add metadata
-all_data_hourly <- all_data_hourly |>
-  left_join(meta, by = c("Log_NR" = "Log_NR")) |>
-  left_join(land_use, by = c("Log_NR" = "Log_NR"))
+all_data_hourly <- full_join(MeteoCH_data_hourly, Thun_Network_data_hourly, by = "time") |>
+  left_join(meta, by = "Log_NR") |>
+  left_join(Water_data_hourly, by = "time") 
+write.csv(all_data_hourly, "../data/final_predictors/all_data_hourly.csv")
+
+# daily data night
+all_data_daily_night <- full_join(MeteoCH_data_daily_night, Thun_Network_data_daily, by = "time") |>
+  left_join(meta, by = "Log_NR") |>
+  left_join(Water_data_daily_night, by = "time") 
+write.csv(all_data_daily_night, "../data/final_predictors/all_data_daily_night.csv")
+```
+
+Create files with only the predictors
+```{r}
+predictors_hourly <- all_data_hourly |>
+  select(-X, -T_mean, -T_min, -T_max, -HI_mean, -H_mean, -H_max, -H_min, -UHI_min, -UHI_max, -HI_min, -HI_max, -change_rate, -Location, -HuM, -LCZ_mixed, -LCZ, -LU_3, -LU_7, -ID)
+write.csv(predictors_hourly, "../data/final_predictors/predictors_hourly.csv")
+
+predictors_daily_night <- all_data_daily_night |>
+  select(-X, -T_mean, -T_min, -T_max, -HI_mean, -H_mean, -H_max, -H_min, -UHI_min, -UHI_max, -HI_min, -HI_max, -Location, -HuM, -LCZ_mixed, -LCZ, -LU_3, -LU_7, -ID, -valid_hours, -UHI_mean, -valid_hours_night, -valid_hours_day, -T_min_night, -Tropical_night, -Gfroerli_night, -T_mean_night, -T_mean_day, -T_max_day, -Summer_day, -Hot_day, -Very_hot_day, -UHI_day)
+write.csv(predictors_daily_night, "../data/final_predictors/predictors_daily_night.csv")
 ```
 
 
-
-# Burger Model
-Calculate Wind variables.
+# Wind data analysis
 First, we look at some wind roses.
 ```{r}
 # Wind direction
@@ -362,6 +500,7 @@ ggwindrose(
   subtitle = "May-Oct 2024",
   caption = "Source: MeteoSwiss"
 )
+ggsave("../figures/Windroses/Wind_Rose_10min_data.png", width = 6, height = 5, dpi = 300)
 
 # Nighttime wind
 MeteoCH_data_wind_night <- MeteoCH_data_wind |>
@@ -379,6 +518,7 @@ ggwindrose(
   subtitle = "May-Oct 2024",
   caption = "Source: MeteoSwiss"
 )
+ggsave("../figures/Windroses/Wind_Rose_10min_data_night.png", width = 6, height = 5, dpi = 300)
 
 # Daytime wind
 MeteoCH_data_wind_day <- MeteoCH_data_wind |>
@@ -396,7 +536,7 @@ ggwindrose(
   subtitle = "May-Oct 2024",
   caption = "Source: MeteoSwiss"
 )
-
+ggsave("../figures/Windroses/Wind_Rose_10min_data_day.png", width = 6, height = 5, dpi = 300)
 
 ```
 
@@ -735,11 +875,32 @@ MeteoCH_data_wind_UHI |> # seems like the hours are not really decisive
     y = "UHI"
   ) +
   theme_minimal() +
-  scale_color_manual(values = c("22" = "yellow", "23" = "orange", "0" = "red", "1" = "purple", "2" = "blue", "3" = "green", "4" = "cyan", "5" = "magenta", "6" = "black"))
+  scale_color_manual(values = c("22" = "#ffff55", "23" = "#ffcc00", "0" = "#ffaa11", "1" = "#ff8022", "2" = "#ff6622", "3" = "#ff5044", "4" = "#ee5077", "5" = "#dd4099", "6" = "magenta"))
 ```
 
-Calculate boolean nighttime rain
+Plot hourly UHI and wind direction
 ```{r}
+p <- ggplot(MeteoCH_data_wind_UHI, aes(x = time, y = UHI)) +
+  geom_line() +  # semi-transparent points
+    # Custom the Y scales:
+  scale_y_continuous(
+    
+    # Features of the first axis
+    name = "UHI",
+    
+    # Add a second axis and specify its features
+    sec.axis = sec_axis( trans=~.*100, name="Wind direction")
+  ) +
+  # add wind direction on secondary y axis
+  geom_point(aes(y = wind_dir_h/100), color = "#4466dd") +
+  labs(
+    title = "UHI and wind direction",
+    x = "time",
+  ) +
+  theme_minimal()
+
+plotly::ggplotly(p) |>
+  layout(yaxis2 = list(overlaying = "y", side = "right", title = "Wind direction"))
 
 ```
 
@@ -747,19 +908,9 @@ Calculate boolean nighttime rain
 
 
 
-Extract values for each station from geospatial layers
-```{r}
-  tiff_names <- list.files("../data/Geodata/")
-  tiff_paths <- paste0("../data/Geodata/",tiff_names)
-  tiffs <- terra::rast(tiff_paths)
 
-  spat_points <- metdatada |> dplyr::select(c(LV_03_E,LV_03_N))
-  extracted <- terra::extract(tiffs,spat_points)
-  combined <- inner_join(combined,extracted,by = "ID")
-  combined <- combined |>
-    dplyr::select(-ID)
 
-```
+
 
 
 
