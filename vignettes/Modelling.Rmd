@@ -10,17 +10,346 @@ output: html_document
 packages <- c("ggplot2","tidyverse","lubridate",
               "dplyr","caret","vip","parsnip",
               "workflows","tune","dials","stringr","terra","stars","sf",
-              "doParallel","terrainr","starsExtra", "pdp", "kableExtra", "recipes","Boruta")
+              "doParallel","terrainr","starsExtra", "pdp", "kableExtra", "recipes","Boruta", "plotly")
 
-source("./R/load_packages.R")
+source("../R/load_packages.R")
 load_packages(packages)
 ```
 
+# 1. Model identical to Burger 2022
+## First, run Burger model for Bern
+```{r}
+Masterfile <- read.csv(
+  file = "../data/Bern_Burger/MF_Zoll_mean_220131.csv",
+  sep = ";",
+  dec = ".",
+  header = TRUE,
+  fileEncoding = "latin1"  # Handles ä, ö, ü, ß etc.
+)
+
+Masterfile <- Masterfile |>
+  rename(SW = S_Wind,
+         NR = Nightrain_c,
+         GS = Globalstrahlung)
+
+QM_TPI_500_Model<-mutate(Masterfile, UHI_est=6.035e-01-(8.310e-03*AltDif)-(2.869e-01*GA_25)+(1.006e+00*BUL_250)-(6.103e-01*AC_750)-(2.332e-02*VH_150)-(7.164e-01*FO_1000)-
+                           (3.140e-03*TPI_500)-(4.913e-01*SW)-(9.963e-01*NR)+(6.563e-03*GS)+
+                           (4.705e-05*(GS*AltDif))-(1.945e-03*(GS*GA_25))+(4.572e-03*(GS*BUL_250))-(1.029e-02*(GS*AC_750))-(1.351e-04*(GS*VH_150))-(6.211e-03*(GS*FO_1000))+(6.031e-05*(GS*TPI_500))-
+                           (1.396e-03*(SW*AltDif))-(4.788e-01*(SW*BUL_250))+(3.482e-01*(SW*AC_750))+(3.748e-01*(SW*FO_1000))-(8.287e-03*(SW*VH_150))-
+                           (5.562e-03*(NR*AltDif))+(3.294e-01*(NR*GA_25))+(1.630e+00*(NR*AC_750))+(1.239e+00*(NR*FO_1000))+(2.038e-02*(NR*VH_150))-(5.588e-03*(NR*TPI_500)))
+
+# summary(lm(Diff_Zoll ~ UHI_est, data=QM_TPI_500_Model))
+# Errors<-((QM_TPI_500_Model$Diff_Zoll - QM_TPI_500_Model$UHI_est)^2)
+# RMSE<-sqrt(mean(Errors, na.rm=T))
+lm <- lm(Diff_Zoll ~ UHI_est, data=QM_TPI_500_Model)
+summary(lm)
+R2 <- round(summary(lm)$r.squared, 3)
+RMSE<-round(sqrt(mean(residuals(lm)^2)), 3)
+
+ggplot(QM_TPI_500_Model, mapping=aes(x=UHI_est, y= Diff_Zoll)) +
+  geom_point(alpha = 0.2) +
+  labs(x="UHI intensity predicted [K]", 
+       y="UHI intensity measured [K]", 
+       title="Interaction model TPI Bern", 
+       subtitle = substitute(R^2 == r2 ~ "; RMSE =" ~ rmse  ~ "K", list(r2 = R2, rmse = RMSE))
+  ) +
+  # geom_text(x=-1.5, y=5.5, label= paste("R2 =", R2), color="orange") +
+  # geom_text(x=-1.5, y=4.5, label= paste("RMSE=", RMSE), color="orange") +
+  xlim(c(-4.5,6)) +
+  ylim(c(-4.5,6)) +
+  geom_abline(intercept=0, slope=1, color="red") +
+  theme_bw()
+ggsave("../figures/models/Burger_Bern_TPI_500.png", width=6.5, height=4, dpi=300)
+
+```
+
+
+## Run Burger model for Thun
 ```{r Load data, include=FALSE, message=FALSE, warning=FALSE}
-# Load the data
+# Load the daily data
+Masterfile <- read.csv("../data/final_predictors/all_data_daily_night.csv",
+                       fileEncoding = "latin1"  # Handles ä, ö, ü, ß etc.
+                       ) |>
+  mutate(time = as.POSIXct(time, format="%d.%m.%Y %H:%M", tz = "UTC")) |> 
+  mutate(time = with_tz(time, tzone = "Europe/Zurich"))  #should start at 2024-05-01 02:00
+
+Masterfile <- Masterfile |>
+  select(UHI_night,
+         AltDif = AD, 
+         GA_25 = OS_GA_25,
+         BUL_250 = LC_B_250,
+         AC_750 = OS_AC_750,
+         FO_1000 = OS_FO_1000,
+         TPI_500 = TPI_500,
+         SW = Wind_S,
+         NR = precip_boolean,
+         GS = glob_rad,
+         VH_150 = VH_175) 
+
+QM_TPI_500_Model<-mutate(Masterfile, UHI_est=6.035e-01-(8.310e-03*AltDif)-(2.869e-01*GA_25)+(1.006e+00*BUL_250)-(6.103e-01*AC_750)-(2.332e-02*VH_150)-(7.164e-01*FO_1000)-
+                           (3.140e-03*TPI_500)-(4.913e-01*SW)-(9.963e-01*NR)+(6.563e-03*GS)+
+                           (4.705e-05*(GS*AltDif))-(1.945e-03*(GS*GA_25))+(4.572e-03*(GS*BUL_250))-(1.029e-02*(GS*AC_750))-(1.351e-04*(GS*VH_150))-(6.211e-03*(GS*FO_1000))+(6.031e-05*(GS*TPI_500))-
+                           (1.396e-03*(SW*AltDif))-(4.788e-01*(SW*BUL_250))+(3.482e-01*(SW*AC_750))+(3.748e-01*(SW*FO_1000))-(8.287e-03*(SW*VH_150))-
+                           (5.562e-03*(NR*AltDif))+(3.294e-01*(NR*GA_25))+(1.630e+00*(NR*AC_750))+(1.239e+00*(NR*FO_1000))+(2.038e-02*(NR*VH_150))-(5.588e-03*(NR*TPI_500)))
+
+lm <- lm(UHI_night ~ UHI_est, data=QM_TPI_500_Model)
+summary(lm)
+R2 <- round(summary(lm)$r.squared, 3)
+RMSE<-round(sqrt(mean(residuals(lm)^2)), 3)
+
+ggplot(QM_TPI_500_Model, mapping=aes(x=UHI_est, y= UHI_night)) +
+  geom_point(alpha = 0.2) +
+    labs(x="UHI intensity predicted [K]", 
+       y="UHI intensity measured [K]", 
+       title="Interaction model TPI Thun (calibrated on Bern)", 
+       subtitle = substitute(R^2 == r2 ~ "; RMSE =" ~ rmse ~ "K", list(r2 = R2, rmse = RMSE))
+  ) +
+  xlim(c(-4.5,6)) +
+  ylim(c(-4.5,6)) +
+  geom_abline(intercept=0, slope=1, color="red") +
+  theme_bw()
+ggsave("../figures/models/Burger_Thun_TPI_500.png", width=6.5, height=4, dpi=300)
+```
+
+# 2. Calibrate the model on Thun
+```{r}
+model_type <- "Interaction model TPI Thun"
+model_type_short <- "INT_TPI_Thun"
+Masterfile <- read.csv("../data/final_predictors/all_data_daily_night.csv", 
+                       fileEncoding = "latin1"  # Handles ä, ö, ü, ß etc.
+                       ) |>
+  mutate(time = as.POSIXct(time, format="%Y-%m-%d", tz = "UTC")) |> 
+  mutate(time = with_tz(time, tzone = "Europe/Zurich"))  #should start at 2024-05-01 02:00
+Masterfile <- Masterfile |>
+  rename(AltDif = AD, 
+   GA_25 = OS_GA_25,
+   BUL_250 = LC_B_250,
+   AC_750 = OS_AC_750,
+   FO_1000 = OS_FO_1000,
+   TPI_500 = TPI_500,
+   SW = Wind_S,
+   NR = precip_boolean,
+   GS = glob_rad,
+   VH_150 = VH_175) |>
+  # drop the rows there one of the predictors is NA
+  filter(!is.na(AltDif) & !is.na(GA_25) & !is.na(BUL_250) & !is.na(AC_750) & !is.na(FO_1000) & 
+         !is.na(TPI_500) & !is.na(SW) & !is.na(NR) & !is.na(GS) & !is.na(VH_150) & !is.na(UHI_night))
+
+QM_TPI_Thun<-lm(UHI_night ~ AltDif+GA_25+BUL_250+AC_750+VH_150+FO_1000+TPI_500+SW+NR+GS+
+                  GS*GA_25+GS*BUL_250+GS*AC_750+GS*VH_150+GS*FO_1000+GS*TPI_500+GS*AltDif+
+                  SW*GA_25+SW*BUL_250+SW*AC_750+SW*FO_1000+SW*VH_150+SW*TPI_500+SW*AltDif+
+                  NR*GA_25+NR*BUL_250+NR*AC_750+NR*FO_1000+NR*VH_150+NR*TPI_500+NR*AltDif,
+                    data=Masterfile)
+Masterfile <- Masterfile |>
+  mutate(UHI_pred = predict(QM_TPI_Thun)) |>
+  mutate(residuals = UHI_night - UHI_pred) |>
+  mutate(rel_error = (UHI_pred - UHI_night) / UHI_night)
+
+# Error metrics by logger
+Err <- Masterfile |>
+  group_by(Log_NR) |>
+  summarise(
+    RMSE_Log = sqrt(mean(residuals^2)),
+    R2_Log = mvrsquared::calc_rsquared(UHI_night, UHI_pred),
+    NRMSE_Log = RMSE_Log / mean(UHI_night)
+  )
+Masterfile <- Masterfile |>
+  left_join(Err, by = "Log_NR")
+
+
+summary(QM_TPI_Thun)
+R2 <- round(summary(QM_TPI_Thun)$r.squared, 3)
+#RMSE<-round(sqrt(mean(residuals(QM_TPI_Thun)^2)), 3)
+RMSE <- round(sqrt(mean(Masterfile$residuals^2)), 3)
+
+ggplot(Masterfile, mapping=aes(x=UHI_pred, y= UHI_night)) +
+  geom_point(alpha = 0.2) +
+    labs(x="UHI intensity predicted [K]", 
+       y="UHI intensity measured [K]", 
+       title=model_type, 
+       subtitle = substitute(R^2 == r2 ~ "; RMSE =" ~ rmse ~ "K", list(r2 = R2, rmse = RMSE))
+  ) +
+  xlim(c(-4.5,6)) +
+  ylim(c(-4.5,6)) +
+  geom_abline(intercept=0, slope=1, color="red") +
+  theme_bw()
+ggsave("../figures/models/Thun_TPI_500.png", width=6.5, height=4, dpi=300)
+
+```
+
+```{r}
+# plot predicted UHI and wind speed
+ggplot(Masterfile, aes(x = ws, y = UHI_pred, color = SW)) +
+  geom_point(alpha = 0.2) +
+  labs(x = "Wind speed [km/h]", y = "UHI intensity predicted [K]", title = "Predicted UHI intensity") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# plot predicted UHI and wind speed
+ggplot(Masterfile, aes(x = Log_NR, y = UHI_pred)) +
+  geom_point(alpha = 0.2) +
+  labs(x = "Logger", y = "UHI intensity predicted [K]", title = "Predicted UHI intensity") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# plot predicted UHI and wind speed
+ggplot(Masterfile, aes(x = date(time), y = UHI_pred, color = Log_NR)) +
+  geom_point(alpha = 0.2) +
+  labs(x = "Logger", y = "UHI intensity predicted [K]", title = "Predicted UHI intensity") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+plotly::ggplotly(
+  ggplot(Masterfile, aes(x = date(time), y = residuals, color = Log_NR)) +
+  geom_point(alpha = 0.2) +
+  labs(x = "Logger", y = "Residuals [K]", title = "Residuals per Logger") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+)
+  #turn into plotly
+
+ggplot(Masterfile, aes(x = factor(Log_NR), y = residuals, color = LU_7)) +
+  geom_boxplot() +
+  labs(x = "Logger", y = "Residuals [K]", title = "Residuals per logger", subtitle = model_type_short, legend = "land use type") +
+  scale_color_manual(values = c("black", "darkgreen", "brown", "#44dd55", "orange", "#2255cc")) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.4))
+ggsave(paste0("../figures/models/residuals_Log_boxplot", model_type_short, ".png"), width=7.5, height=4, dpi=300)
+
+ggplot(Masterfile, aes(x = factor(Log_NR), y = rel_error, color = LU_7)) +
+  geom_boxplot(outliers = F) +
+  labs(x = "Logger", y = "Relative error", title = "Relative error per logger", subtitle = model_type_short, legend = "land use type") +
+  scale_color_manual(values = c("black", "darkgreen", "brown", "#44dd55", "orange", "#2255cc")) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.4))
+ggsave(paste0("../figures/models/rel_err_Log_boxplot", model_type_short, ".png"), width=7.5, height=4, dpi=300)
+
+ggplot(Masterfile, aes(x = UHI_pred, y = residuals, color=LU_7)) +
+  geom_point(alpha = 0.3) +
+  geom_hline(yintercept = 0, linetype = "dashed", width = 0.05) +
+  geom_vline(xintercept = 0, linetype = "dashed", width = 0.05) +
+  facet_wrap(~ Log_NR) +
+  labs(x = "Predicted UHI [K]", y = "Residual [K]", title = "Residuals vs Predicted UHI per logger", subtitle = model_type_short, legend = "land use type") +
+  scale_color_manual(values = c("black", "darkgreen", "brown", "#44dd55", "orange", "#2255cc")) +
+  theme_minimal()
+ggsave(paste0("../figures/models/residuals_Log_", model_type_short, ".png"), width=10, height=9.2, dpi=600)
+
+
+ggplot(Err, aes(x = reorder(Log_NR, RMSE_Log), y = RMSE_Log)) +
+  geom_col(fill = "coral") +
+  coord_flip() +
+  labs(x = "Sensor", y = "RMSE", title = "RMSE per sensor") +
+  theme_minimal()
+
+```
+```{r}
+# plot e timeseries of a logger
+for (i in unique(Masterfile$Log_NR)) {
+  loc <- Masterfile |> filter(Log_NR == i) |> select(Location) |> unique()
+  rsq <- Masterfile |> filter(Log_NR == i) |> select(R2_Log) |> unique() |> round(3)
+  rmse_log <- Masterfile |> filter(Log_NR == i) |> select(RMSE_Log) |> unique() |> round(3)
+  p <- ggplot(Masterfile |> filter(Log_NR == i), aes(x = time)) +
+    geom_line(aes(y = UHI_night, color = "black")) +
+    geom_line(aes(y = UHI_pred, color = "red")) +
+    # add rmse_log and r
+    labs(x = "Date", y = "UHI [K]", 
+         title = paste("UHI intensity for", i, loc), 
+         color = "data",
+         # subtitle = substitute(R^2 == r2 ~ "; RMSE =" ~ rmse ~ "K", list(r2 = rsq, rmse = rmse_log))) +
+         subtitle = paste0("R^2 = ", rsq, "; RMSE = ", rmse_log, " K; model: ", model_type_short)) +
+    # add legend
+    scale_color_manual(values = c("black", "red"), labels = c("Measured", "Predicted")) +
+    theme_minimal() +
+    ylim(c(-1.5,5))
+  print(p)
+  ggsave(paste0("../figures/models/",model_type_short, "/pred_vs_ms_", i, "_", model_type_short, ".png"), width=7.5, height=4, dpi=200)
+}
+    
+    
+```
+
+
+Maps
+```{r}
+# Assuming you have coordinates like Longitude, Latitude or X, Y
+ggplot(Masterfile, aes(x = OST_CHTOPO, y = NORD_CHTOPO, fill = RMSE_Log)) +
+  scale_fill_viridis_c() +
+  geom_point(shape = 21, size = 4, color = "black") +
+  labs(fill = "RMSE [K]", title = "Spatial distribution of RMSE", subtitle = model_type_short,
+       x = "Longitude", y = "Latitude") +
+  theme_minimal()
+
+ggplot(Masterfile, aes(x = OST_CHTOPO, y = NORD_CHTOPO, fill = NRMSE_Log)) +
+  scale_fill_viridis_c() +
+  geom_point(shape = 21, size = 4, color = "black") +
+  labs(fill = "NRMSE", title = "Spatial distribution of NRMSE", subtitle = model_type_short,
+       x = "Longitude", y = "Latitude") +
+  theme_minimal()
+
+ggplot(Masterfile, aes(x = OST_CHTOPO, y = NORD_CHTOPO, fill = R2_Log)) +
+  scale_fill_viridis_c() +
+  geom_point(shape = 21, size = 4, color = "black") +
+  labs(fill = "R-squared", title = "Spatial distribution of R-squred", subtitle = model_type_short,
+       x = "Longitude", y = "Latitude") +
+  theme_minimal()
+
+library(leaflet)
+library(RColorBrewer)
+
+library(leaflet)
+
+# Create color palettes
+pal_rmse <- colorNumeric("viridis", domain = Masterfile$RMSE_Log)
+pal_r2   <- colorNumeric("viridis", domain = Masterfile$R2_Log)
+pal_nrmse <- colorNumeric("viridis", domain = Masterfile$NRMSE_Log)
+
+leaflet(Masterfile) %>%
+  addProviderTiles("Stadia.StamenTerrain") %>%
+
+  # RMSE Layer
+  addCircleMarkers(
+    lng = ~OST_CHTOPO, lat = ~NORD_CHTOPO,
+    radius = 6,
+    #fillColor = ~pal_rmse(RMSE_Log),
+    fillColor = colorNumeric(palette = "viridis", domain = Masterfile$RMSE_Log),
+    fillOpacity = 1, color = "black", weight = 1,
+    group = "RMSE"
+  ) %>%
+  
+  # R2 Layer
+  addCircleMarkers(
+    lng = ~OST_CHTOPO, lat = ~NORD_CHTOPO,
+    radius = 6,
+    fillColor = colorNumeric("viridis", domain = Masterfile$R2_Log),
+    fillOpacity = 1, color = "black", weight = 1,
+    group = "R²"
+  ) %>%
+
+  # NRMSE Layer
+  addCircleMarkers(
+    lng = ~OST_CHTOPO, lat = ~NORD_CHTOPO,
+    radius = 6,
+    fillColor = colorNumeric("viridis", domain = Masterfile$NRMSE_Log),
+    fillOpacity = 1, color = "black", weight = 1,
+    group = "NRMSE"
+  ) %>%
+
+  # Layer Control
+  addLayersControl(
+    baseGroups = c("RMSE", "R²", "NRMSE"),
+    options = layersControlOptions(collapsed = FALSE)
+  ) %>%
+
+  # Add Legends (all at once; alternatively, use only one at a time if using `leaflet.extras2`)
+  addLegend("bottomright", pal = pal_rmse, values = ~RMSE_Log, title = "RMSE [K]", group = "RMSE") %>%
+  addLegend("bottomright", pal = pal_r2, values = ~R2_Log, title = "R²", group = "R²") %>%
+  addLegend("bottomright", pal = pal_nrmse, values = ~NRMSE, title = "NRMSE", group = "NRMSE")
+
 
 
 ```
+
+
 
 ```{r predictors}
 # Define the predictors
@@ -33,42 +362,4 @@ predictors <- combined |>
 
 ```
 
-```
 
-# Variable selection
-
-We are going to test different algorithms to select the best variables for our model. 
-- Boruta
-- Random forest stepwise backwards regression
-- Correlation matrix
-
-## Boruta
-```{r}
-temperature <- combined$temperature
-
-# run the algorithm
-bor <- Boruta::Boruta(
-    y = temperature, 
-    x = combined[, predictors],
-    maxRuns = 30, # Number of iterations. Set to 30 or lower if it takes too long
-    num.threads = parallel::detectCores()-1)
-
-# obtain results: a data frame with all variables, ordered by their importance
-df_bor <- Boruta::attStats(bor) |> 
-  tibble::rownames_to_column() |> 
-  dplyr::arrange(dplyr::desc(meanImp))
-
-# plot the importance result  
-ggplot2::ggplot(ggplot2::aes(x = reorder(rowname, meanImp), 
-                             y = meanImp,
-                             fill = decision), 
-                data = df_bor) +
-  ggplot2::geom_bar(stat = "identity", width = 0.75) + 
-  ggplot2::scale_fill_manual(values = c("grey30", "tomato", "grey70")) + 
-  ggplot2::labs(
-    y = "Variable importance", 
-    x = "",
-    title = "Variable importance based on Boruta") +
-  ggplot2::theme_classic() +
-  ggplot2::coord_flip()
-```
