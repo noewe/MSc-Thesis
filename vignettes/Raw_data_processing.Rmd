@@ -5,237 +5,10 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
+
 ```{r setup, include=FALSE}
 source("../R/load_packages.R")
 load_packages(c("dplyr", "ggplot2", "climaemet", "openair", "lubridate", "tidyverse"))
-```
-Precipitation
-```{r}
-# Load the data
-folder <- "../data/IDAWEB/Precipitation/"
-# read the text file that ends with "data.txt"
-file_path <- list.files(folder, pattern = "data.txt$", full.names = TRUE)
-# read as as text file
-lines <- readLines(file_path)
-
-# Remove empty lines
-lines <- lines[lines != ""]
-
-# Find indices where headers appear
-header_indices <- grep("^stn\\s+time", lines)
-
-# Read the first table
-table1 <- read.table(text = paste(lines[(header_indices[1] + 1):(header_indices[2] - 1)], collapse = "\n"), 
-                     header = FALSE, col.names = c("stn", "time", "rre150z0"),
-                     stringsAsFactors = FALSE)
-# Convert `time` to a proper datetime format (if needed)
-table1$time <- as.POSIXct(as.character(table1$time), format="%Y%m%d%H%M")
-
-# Read the second table
-table2 <- read.table(text = paste(lines[(header_indices[2] + 1):length(lines)], collapse = "\n"), 
-                     header = FALSE, col.names = c("stn", "time", "rre150h0", "rre024i0", "rre072i0"),
-                     stringsAsFactors = FALSE)
-# Convert `time` to a proper datetime format (if needed)
-table2$time <- as.POSIXct(as.character(table2$time), format="%Y%m%d%H")
-
-# Merge both tables on "stn" and "time"
-final_df <- full_join(table1, table2, by = c("stn", "time"))
-
-# rename the columns
-# Parameter Einheit                              Beschreibung
-# rre150h0  mm                                   Niederschlag; Stundensumme
-# rre024i0  mm                                   Niederschlagssumme ?ber 24 Stunden
-# rre072i0  mm                                   Niederschlagssumme ?ber 72 Stunden
-# rre150z0  mm                                   Niederschlag; Zehnminutensumme 
-IDAWEB_final_df <- final_df |>
-  rename(precip_last1h = rre150h0, 
-         precip_last24h = rre024i0,
-         precip_last72h = rre072i0,
-         precip_10min = rre150z0)
-
-# View the final data frame
-print(IDAWEB_final_df)
-```
-Radiation
-```{r}
-folder <- "../data/IDAWEB/Radiation_Humidity_Pressure/"
-file_path <- list.files(folder, pattern = "data.txt$", full.names = TRUE)
-lines <- readLines(file_path)
-lines <- lines[lines != ""]
-header_indices <- grep("^stn\\s+time", lines)
-
-
-table1 <- read.table(text = paste(lines[(header_indices[1] + 1):(header_indices[2] - 1)], collapse = "\n"), 
-                     header = FALSE, col.names = c("stn", "time", "gre000z0", "prestas0", "ure200s0"),
-                     stringsAsFactors = FALSE)
-table1$time <- as.POSIXct(as.character(table1$time), format="%Y%m%d%H%M")
-
-
-table2 <- read.table(text = paste(lines[(header_indices[2] + 1):length(lines)], collapse = "\n"), 
-                     header = FALSE, col.names = c("stn", "time", "gre000h0", "prestah0", "ure200h0"),
-                     stringsAsFactors = FALSE)
-table2$time <- as.POSIXct(as.character(table2$time), format="%Y%m%d%H")
-
-
-final_df <- full_join(table1, table2, by = c("stn", "time"))
-IDAWEB_final_df <- full_join(IDAWEB_final_df, final_df, by = c("stn", "time"))
-
-# Parameter Einheit                              Beschreibung
-# gre000h0  W/m²                                 Globalstrahlung; Stundenmittel
-# prestah0  hPa                                  Luftdruck auf Barometerhöhe (QFE); Stundenmittel
-# ure200h0  %                                    Relative Luftfeuchtigkeit 2 m über Boden; Stundenmittel
-# gre000z0  W/m²                                 Globalstrahlung; Zehnminutenmittel
-# prestas0  hPa                                  Luftdruck auf Barometerhöhe (QFE); Momentanwert
-# ure200s0  %                                    Relative Luftfeuchtigkeit 2 m über Boden; Momentanwert
-
-IDAWEB_final_df <- IDAWEB_final_df |>
-  rename(glob_rad_h = gre000h0,
-         glob_rad_10min = gre000z0,
-         airpress_h = prestah0,
-         airpress_10min = prestas0,
-         RH_2m_h = ure200h0,
-         RH_2m_10min = ure200s0)
-
-print(IDAWEB_final_df)
-```
-
-Temperature
-```{r}
-folder <- "../data/IDAWEB/Temperature/"
-file_path <- list.files(folder, pattern = "data.txt$", full.names = TRUE)
-lines <- readLines(file_path)
-lines <- lines[lines != ""]
-header_indices <- grep("^stn\\s+time", lines)
-
-
-table1 <- read.table(text = paste(lines[(header_indices[1] + 1):(header_indices[2] - 1)], collapse = "\n"), 
-                     header = FALSE, col.names = c("stn", "time", "tre200s0","tpo200s0"),
-                     stringsAsFactors = FALSE)
-table1$time <- as.POSIXct(as.character(table1$time), format="%Y%m%d%H%M")
-
-
-table2 <- read.table(text = paste(lines[(header_indices[2] + 1):length(lines)], collapse = "\n"), 
-                     header = FALSE, col.names = c("stn", "time", "tre200h0"),
-                     stringsAsFactors = FALSE)
-table2$time <- as.POSIXct(as.character(table2$time), format="%Y%m%d%H")
-
-
-final_df <- full_join(table1, table2, by = c("stn", "time"))
-IDAWEB_final_df <- full_join(IDAWEB_final_df, final_df, by = c("stn", "time"))
-
-# Parameter Einheit                              Beschreibung
-# tre200s0  °C                                   Lufttemperatur 2 m über Boden; Momentanwert
-# tpo200s0  °C                                   Potentielle Temperatur 2 m über Boden; Momentanwert
-# tre200h0  °C                                   Lufttemperatur 2 m über Boden; Stundenmittel
-
-IDAWEB_final_df <- IDAWEB_final_df |>
-  rename(temp_air_2m_10min = tre200s0,
-         temp_air_2m_h = tre200h0,
-         temp_pot_2m_10m = tpo200s0)
-
-print(IDAWEB_final_df)
-```
-
-Wind
-```{r}
-folder <- "../data/IDAWEB/Wind/"
-file_path <- list.files(folder, pattern = "data.txt$", full.names = TRUE)
-lines <- readLines(file_path)
-lines <- lines[lines != ""]
-header_indices <- grep("^stn\\s+time", lines)
-
-
-table1 <- read.table(text = paste(lines[(header_indices[1] + 1):(header_indices[2] - 1)], collapse = "\n"), 
-                     header = FALSE, col.names = c("stn", "time", "fkl010z0", "fu3010z0", "dkl010z0"),
-                     stringsAsFactors = FALSE)
-table1$time <- as.POSIXct(as.character(table1$time), format="%Y%m%d%H%M")
-
-
-table2 <- read.table(text = paste(lines[(header_indices[2] + 1):(header_indices[3] - 1)], collapse = "\n"), 
-                     header = FALSE, col.names = c("stn", "time", "fu3010h0", "dkl010h0"),
-                     stringsAsFactors = FALSE)
-table2$time <- as.POSIXct(as.character(table2$time), format="%Y%m%d%H")
-
-table3 <- read.table(text = paste(lines[(header_indices[3] + 1):length(lines)], collapse = "\n"), 
-                     header = FALSE, col.names = c("stn", "time", "dkl010d0"),
-                     stringsAsFactors = FALSE)
-table3$time <- as.POSIXct(as.character(table3$time), format="%Y%m%d")
-
-IDAWEB_final_df <- full_join(IDAWEB_final_df, table1, by = c("stn", "time"))
-IDAWEB_final_df <- full_join(IDAWEB_final_df, table2, by = c("stn", "time"))
-IDAWEB_final_df <- full_join(IDAWEB_final_df, table3, by = c("stn", "time"))
-
-# Parameter Einheit                              Beschreibung
-# fu3010h0  km/h                                 Windgeschwindigkeit skalar; Stundenmittel in km/h
-# dkl010h0  °                                    Windrichtung; Stundenmittel
-# fkl010z0  m/s                                  Windgeschwindigkeit skalar; Zehnminutenmittel in m/s
-# fu3010z0  km/h                                 Windgeschwindigkeit; Zehnminutenmittel in km/h
-# dkl010z0  °                                    Windrichtung; Zehnminutenmittel
-# dkl010d0  °                                    Windrichtung; Tagesmittel
-
-IDAWEB_final_df <- IDAWEB_final_df |>
-  rename(wind_vel_h_kmh = fu3010h0,
-         wind_dir_h = dkl010h0,
-         wind_vel_10min_ms = fkl010z0,
-         wind_vel_10min_kmh = fu3010z0,
-         wind_dir_10min = dkl010z0,
-         wind_dir_d = dkl010d0)
-         
-print(IDAWEB_final_df)
-```
-
-Large-scale weather situaiton
-```{r}
-folder <- "../data/IDAWEB/Weather_Type/"
-file_path <- list.files(folder, pattern = "data.txt$", full.names = TRUE)
-lines <- readLines(file_path)
-lines <- lines[lines != ""]
-header_indices <- grep("^stn\\s+time", lines)
-
-table1 <- read.table(text = paste(lines[(header_indices[1] + 1):length(lines)], collapse = "\n"), 
-                     header = FALSE, col.names = c("stn", "time", "wkcap2d0", "wkcap3d0", "wkcap1d0", "wkwtg1d0", "wkwtp1d0", "wkwtg2d0", "wkwtp2d0", "wkwtg3d0", "wkwtp3d0", "wkwtg0d0"),
-                     stringsAsFactors = FALSE) |>
-  dplyr::select(-stn) |> # remove station because it is not Thun and can be confusing
-  mutate(time = as.POSIXct(as.character(time), format="%Y%m%d")) |>
-  #mutate(time = as.POSIXct(as.character(time), format = "%Y-%m-%d %H:%M:%S")) |>
-  rowwise() |>
-  mutate(time_10min = list(seq(time, time + hours(23) + minutes(50), by = "10 mins"))) |> 
-  unnest(time_10min) |>
-  select(-time) |>
-  rename(time = time_10min)
-
-IDAWEB_final_df <- full_join(IDAWEB_final_df, table1, by = c("time"))
-
-# Parameter Einheit                              Beschreibung
-# wkcap2d0    Code                                 CAP/PCACA mit 18 Klassen basierend auf Bodendruck (3E-20E,41N-52N)
-# wkcap3d0    Code                                 CAP/PCACA mit 27 Klassen basierend auf Bodendruck (3E-20E,41N-52N)
-# wkcap1d0    Code                                 CAP/PCACA mit 9 Klassen basierend auf Bodendruck (3E-20E,41N-52N)
-# wkwtg1d0    Code                                 GWT mit 10 Klassen basierend auf 500hPa Geopotential (3E-20E,41N-52N)
-# wkwtp1d0    Code                                 GWT mit 10 Klassen basierend auf Bodendruck (3E-20E,41N-52N)
-# wkwtg2d0    Code                                 GWT mit 18 Klassen basierend auf 500hPa Geopotential (3E-20E,41N-52N)
-# wkwtp2d0    Code                                 GWT mit 18 Klassen basierend auf Bodendruck (3E-20E,41N-52N)
-# wkwtg3d0    Code                                 GWT mit 26 Klassen basierend auf 500hPa Geopotential (3E-20E,41N-52N)
-# wkwtp3d0    Code                                 GWT mit 26 Klassen basierend auf Bodendruck (3E-20E,41N-52N)
-# wkwtg0d0    Code                                 GWT mit 8 Klassen basierend auf 500hPa Geopotential (5E-12E,45N-49N)
-
-IDAWEB_final_df <- IDAWEB_final_df |>
-  rename(CAP18 = wkcap2d0,
-         CAP27 = wkcap3d0,
-         CAP9 = wkcap1d0,
-         GWT10_Z500 = wkwtg1d0,
-         GWT10_SLP = wkwtp1d0,
-         GWT18_Z500 = wkwtg2d0,
-         GWT18_SLP = wkwtp2d0,
-         GWT26_Z500 = wkwtg3d0,
-         GWT26_SLP = wkwtp3d0,
-         GWT8_Z500 = wkwtg0d0)
-
-print(IDAWEB_final_df)
-```
-
-```{r}
-# save the dataframe
-write.csv(IDAWEB_final_df, "../data/IDAWEB/MeteoCH_Thun.csv")
 ```
 
 
@@ -285,7 +58,7 @@ write.csv(MeteoCH_data, "../data/IDAWEB/MeteoCH_Thun.csv")
 
 ```
 
-# Extract station information from geospatial layers
+# Extract station information from geospatial layers and join to metadata
 ```{r}
 # read metadata
 meta <- read.csv("../data/Metadata/metadata_Thun.csv")
@@ -308,8 +81,10 @@ str(meta)
 
 write.csv(meta, "../data/Metadata/metadata_Thun_geodata.csv")
 ```
+
 Water temperature data
 ```{r}
+# BAFU water temperature
 Water_data <- read.csv(
   "../data/external/Water - BAFU/2030_Wassertemperatur_10-Min-Mittel_2024-05-01_2024-09-30.csv",
   skip = 9, # delete metadata
@@ -326,6 +101,30 @@ Water_data <- Water_data |>
   mutate(time = as.POSIXct(Water_data$Zeitstempel, format = "%Y-%m-%d %H:%M:%S",  tz = "Europe/Zurich")) |>
   select(time, water_temp = Wert)
 
+
+
+# ALPLAKES mean lake surface temperature
+
+# Temporarily switch to English locale to parse the time format of the following csv correctly
+old_locale <- Sys.getlocale("LC_TIME")
+Sys.setlocale("LC_TIME", "C")
+
+alplakes_data <- read.csv(
+  "../data/external/ALPLAKES/ALPLAKES_Average_Lake_Surface_Temperature_LakeThun_Simstrat.csv",
+  stringsAsFactors = FALSE,
+  fileEncoding = "UTF-8",  # Handles ä, ö, ü, ß etc.
+) |>
+    mutate(
+      water_temp_surface = `Temperature...C.`,
+      time_clean = sub(" GMT[+-][0-9]{4}.*$", "", `time...`),  # remove everything in parentheses
+      time_posix = as.POSIXct(time_clean, format = "%a %b %d %Y %H:%M:%S", tz = "Europe/Zurich"),
+      time = floor_date(time_posix, unit = "hour")) |>
+  dplyr::select(time, water_temp_surface)
+
+# Restore original locale
+Sys.setlocale("LC_TIME", old_locale)
+
+
 # Aggregate to hourly data
 Water_data_hourly <- Water_data |>
     #mutate(time_hour = floor_date(time, unit = "hour")) |> # round to nearest hour (floor)
@@ -333,18 +132,25 @@ Water_data_hourly <- Water_data |>
   group_by(time) |>
   summarise(water_temp = mean(water_temp, na.rm = TRUE))
 
-Water_data_daily_night <- Water_data_hourly |>
-  filter(hour(time) >= 22 | hour(time) <= 6) |>
-  # shift time 7h back
-  mutate(time = time - hours(7)) |>
-  group_by(time = as.Date(time)) |>
-  summarise(water_temp = mean(water_temp, na.rm = TRUE)) |>
-  ungroup()
+# Merge the two datasets
+Water_data_hourly <- Water_data_hourly |>
+  left_join(alplakes_data, by = "time")
+# interpolate water surface temperature 
+Water_data_hourly <- Water_data_hourly |>
+   mutate(water_temp_surface = zoo::na.approx(water_temp_surface, x = time, na.rm = FALSE))
+
+# Water_data_daily_night <- Water_data_hourly |>
+#   filter(hour(time) >= 22 | hour(time) <= 6) |>
+#   # shift time 7h back
+#   mutate(time = time - hours(7)) |>
+#   group_by(time = as.Date(time)) |>
+#   summarise(water_temp = mean(water_temp, na.rm = TRUE),
+#             water_temp_surface = mean(water_temp_surface, na.rm = TRUE)) |>
+#   ungroup()
 ```
 
-Load the Thun Network data and calculate the UHI from the MeteoCH data
+Load the Thun Network data
 ```{r}
-
 Thun_Network_data <- read.csv("../data/Thun Messnetz 2024/10min_long_2024-05-01_2024-10-30.csv") |>
   mutate(time = as.POSIXct(time, format = "%Y-%m-%dT%H:%M:%OS", tz="UTC"),
          timeshift = as.POSIXct(timeshift, format = "%Y-%m-%dT%H:%M:%OS", tz="UTC")) |>
@@ -362,8 +168,7 @@ Thun_Network_data_daily <- read.csv("../data/Thun Messnetz 2024/Thun_daily_summa
   rename(time = time_day)
 ```
 
-
-# Combine all: Meteo, Water, Geospatial, Low Cost Sensor data, and Metadata
+# Aggregate MeteoCH data and add memory/rolling means
 ```{r}
 MeteoCH_data <- read.csv("../data/IDAWEB/MeteoCH_Thun.csv") |>
   mutate(time = as.POSIXct(time, format="%d.%m.%Y %H:%M", tz = "UTC")) |> 
@@ -377,22 +182,24 @@ MeteoCH_data_10min <- MeteoCH_data |>
 MeteoCH_data_hourly <- MeteoCH_data |>
   select(time, temp_air_2m_h, precip_last1h, precip_last24h, precip_last72h, RH_2m_h, glob_rad_h, airpress_h, wind_vel_h_kmh, wind_dir_h, wind_dir_h_class, wind_dir_h_NS, CAP9, CAP18, CAP27, GWT8_Z500, GWT10_SLP, GWT10_Z500, GWT18_SLP, GWT18_Z500, GWT26_SLP, GWT26_Z500) |>
   drop_na() |>
-  mutate(temp = temp_air_2m_h,
+  rename(air_temp = temp_air_2m_h,
          pressure = airpress_h,
          wind_vel = wind_vel_h_kmh,
          wind_dir = wind_dir_h,
          rad = glob_rad_h,
          humidity = RH_2m_h,
-         precip = precip_last1h)
+         precip = precip_last1h) |>
+  # join with water_temp data
+  left_join(Water_data_hourly, by = "time")
 
  MeteoCH_data_hourly <- MeteoCH_data_hourly |>
     arrange(time)|> # make sure it's in the right order
     mutate(
-      mean_temp_6h = zoo::rollmean(temp, k = 6, fill = NA, align = "right"),
-      mean_temp_12h = zoo::rollmean(temp, k = 12, fill = NA, align = "right"),
-      mean_temp_1d = zoo::rollmean(temp, k = 24 * 1, fill = NA, align = "right"),
-      mean_temp_3d = zoo::rollmean(temp, k = 24 * 3, fill = NA, align = "right"),
-      mean_temp_5d = zoo::rollmean(temp, k = 24 * 5, fill = NA, align = "right"),
+      mean_air_temp_6h = zoo::rollmean(air_temp, k = 6, fill = NA, align = "right"),
+      mean_air_temp_12h = zoo::rollmean(air_temp, k = 12, fill = NA, align = "right"),
+      mean_air_temp_1d = zoo::rollmean(air_temp, k = 24 * 1, fill = NA, align = "right"),
+      mean_air_temp_3d = zoo::rollmean(air_temp, k = 24 * 3, fill = NA, align = "right"),
+      mean_air_temp_5d = zoo::rollmean(air_temp, k = 24 * 5, fill = NA, align = "right"),
       mean_pressure_6h = zoo::rollmean(pressure, k = 6, fill = NA, align = "right"),
       mean_pressure_12h = zoo::rollmean(pressure, k = 12, fill = NA, align = "right"),
       mean_pressure_1d = zoo::rollmean(pressure, k = 24 * 1, fill = NA, align = "right"),
@@ -403,11 +210,6 @@ MeteoCH_data_hourly <- MeteoCH_data |>
       mean_wind_vel_1d = zoo::rollmean(wind_vel, k = 24 * 1, fill = NA, align = "right"),
       mean_wind_vel_3d = zoo::rollmean(wind_vel, k = 24 * 3, fill = NA, align = "right"),
       mean_wind_vel_5d = zoo::rollmean(wind_vel, k = 24 * 5, fill = NA, align = "right"),
-      # mean_wind_dir_6_hours = zoo::rollmean(wind_dir, k = 6, fill = NA, align = "right"),
-      # mean_wind_dir_12_hours = zoo::rollmean(wind_dir, k = 12, fill = NA, align = "right"),
-      # mean_wind_dir_1_day = zoo::rollmean(wind_dir, k = 24 * 1, fill = NA, align = "right"),
-      # mean_wind_dir_3_days = zoo::rollmean(wind_dir, k = 24 * 3, fill = NA, align = "right"),
-      # mean_wind_dir_5_days = zoo::rollmean(wind_dir, k = 24 * 5, fill = NA, align = "right"),
       mean_rad_6h = zoo::rollmean(rad, k = 6, fill = NA, align = "right"),
       mean_rad_12h = zoo::rollmean(rad, k = 12, fill = NA, align = "right"),
       mean_rad_1d = zoo::rollmean(rad, k = 24 * 1, fill = NA, align = "right"),
@@ -422,18 +224,41 @@ MeteoCH_data_hourly <- MeteoCH_data |>
       sum_precip_12h = zoo::rollsum(precip, k = 12, fill = NA, align = "right"),
       sum_precip_1d = zoo::rollsum(precip, k = 24 * 1, fill = NA, align = "right"),
       sum_precip_3d = zoo::rollsum(precip, k = 24 * 3, fill = NA, align = "right"),
-      sum_precip_5d = zoo::rollsum(precip, k = 24 * 5, fill = NA, align = "right")) |>
+      sum_precip_5d = zoo::rollsum(precip, k = 24 * 5, fill = NA, align = "right"),
+      mean_water_temp_6h = zoo::rollmean(water_temp, k = 6, fill = NA, align = "right"),
+      mean_water_temp_12h = zoo::rollmean(water_temp, k = 12, fill = NA, align = "right"),
+      mean_water_temp_1d = zoo::rollmean(water_temp, k = 24 * 1, fill = NA, align = "right"),
+      mean_water_temp_3d = zoo::rollmean(water_temp, k = 24 * 3, fill = NA, align = "right"),
+      mean_water_temp_5d = zoo::rollmean(water_temp, k = 24 * 5, fill = NA, align = "right"),
+      mean_water_temp_surface_6h = zoo::rollmean(water_temp_surface, k = 6, fill = NA, align = "right"),
+      mean_water_temp_surface_12h = zoo::rollmean(water_temp_surface, k = 12, fill = NA, align = "right"),
+      mean_water_temp_surface_1d = zoo::rollmean(water_temp_surface, k = 24 * 1, fill = NA, align = "right"),
+      mean_water_temp_surface_3d = zoo::rollmean(water_temp_surface, k = 24 * 3, fill = NA, align = "right"),
+      mean_water_temp_surface_5d = zoo::rollmean(water_temp_surface, k = 24 * 5, fill = NA, align = "right")) |>
     mutate_at(vars(starts_with("sum_precip")), ~ ifelse(. < 0.1, 0, .))
  
 source("../R/roll_mean_wind_dir.R") 
  MeteoCH_data_hourly <- roll_mean_wind_dir(
   df = MeteoCH_data_hourly,
   dir_col = "wind_dir",
-  speed_col = "wind_vel_h_kmh",
+  speed_col = "wind_vel",
   k = c(6, 12, 24, 72, 120),
   suffix = c("6h", "12h", "1d", "3d", "5d")
 )
 ```
+
+
+# Join the hourly Thun network data with the other Meteo data
+```{r}
+all_data_hourly <- Thun_Network_data_hourly |>
+  select(time, Log_NR, T_mean) |>
+  rename(air_temp_LCD = T_mean) |>
+  left_join(meta, by = "Log_NR") |>
+  left_join(MeteoCH_data_hourly, by = "time") |>
+  select(-X, -HuM, -ID) |>
+  mutate(UHI = air_temp_LCD - air_temp)
+```
+
 
 # Aggregate the meteodata to daily nighttime data
 ```{r}
@@ -442,8 +267,8 @@ MeteoCH_data_daily_night <- MeteoCH_data_hourly |>
   # shift time 7h back
   mutate(time = time - hours(7)) |>
   group_by(date = as.Date(time)) |>
-  summarise(temp_air_2m = mean(temp_air_2m_h, na.rm = TRUE),
-            precip = sum(precip_last1h, na.rm = TRUE),
+  summarise(air_temp = mean(air_temp, na.rm = TRUE),
+            precip = sum(precip, na.rm = TRUE),
             precip_boolean = ifelse(precip > 0.3, 1, 0),
             RH_2m = mean(RH_2m_h, na.rm = TRUE),
             #glob_rad = mean(glob_rad_h, na.rm = TRUE),
@@ -503,7 +328,6 @@ MeteoCH_data_daily_night <- full_join(MeteoCH_data_daily_night, wind_df, by = "d
 # Add Thun Network data
 all_data_daily_night <- full_join(MeteoCH_data_daily_night, Thun_Network_data_daily, by = "time")
 write.csv(all_data_daily_night, "../data/final_predictors/meteo_data_daily_night.csv")
-
 ```
 
 ```{r}
@@ -595,7 +419,6 @@ ggwindrose(
   caption = "Source: MeteoSwiss"
 )
 ggsave("../figures/Windroses/Wind_Rose_10min_data_day.png", width = 6, height = 5, dpi = 300)
-
 ```
 
 Plot windroses for different UHIs
@@ -682,7 +505,6 @@ ggwindrose(
   subtitle = "May-Oct 2024",
   caption = "Source: MeteoSwiss"
 )
-
 ```
 
 
@@ -700,8 +522,6 @@ ggplot(MeteoCH_data_wind_UHI, aes(x = wind_vel_10min_ms, y = UHI, color = wind_d
   ) +
   theme_minimal() +
   scale_color_manual(values = c("N" = "blue", "S" = "red"))
-
-
 ```
 
 Do the whole thing again with hourly data
@@ -756,8 +576,6 @@ ggwindrose(
   subtitle = "May-Oct 2024",
   caption = "Source: MeteoSwiss"
 )
-
-
 ```
 
 
@@ -876,7 +694,6 @@ ggwindrose(
   caption = "Source: MeteoSwiss"
 )
 ggsave("../figures/Windroses/Wind_Rose_UHIlow_night.png", width = 6, height = 5, dpi = 300)
-
 ```
 
 ```{r}
