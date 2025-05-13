@@ -342,23 +342,8 @@ Water_data_daily_night <- Water_data_hourly |>
   ungroup()
 ```
 
-
-
-# Combine all: Meteo, Water, Geospatial, Low Cost Sensor data, and Metadata
+Load the Thun Network data and calculate the UHI from the MeteoCH data
 ```{r}
-MeteoCH_data <- read.csv("../data/IDAWEB/MeteoCH_Thun.csv") |>
-  mutate(time = as.POSIXct(time, format="%d.%m.%Y %H:%M", tz = "UTC")) |> 
-  mutate(time = with_tz(time, tzone = "Europe/Zurich")) |> #should start at 2024-05-01 02:00
-  select(-X.1, -X, -stn)
-
-MeteoCH_data_10min <- MeteoCH_data |>
-  select(time, temp_air_2m_10min, temp_pot_2m_10m, precip_10min, RH_2m_10min, glob_rad_10min, airpress_10min, wind_vel_10min_ms, wind_vel_10min_kmh, wind_dir_10min, wind_dir_10min_class, wind_dir_10min_NS, CAP9, CAP18, CAP27, GWT8_Z500, GWT10_SLP, GWT10_Z500, GWT18_SLP, GWT18_Z500, GWT26_SLP, GWT26_Z500) |>
-  drop_na()
-# TODO: calculate precip last h, 24, h etc.
-
-MeteoCH_data_hourly <- MeteoCH_data |>
-  select(time, temp_air_2m_h, precip_last1h, precip_last24h, precip_last72h, RH_2m_h, glob_rad_h, airpress_h, wind_vel_h_kmh, wind_dir_h, wind_dir_h_class, wind_dir_h_NS, CAP9, CAP18, CAP27, GWT8_Z500, GWT10_SLP, GWT10_Z500, GWT18_SLP, GWT18_Z500, GWT26_SLP, GWT26_Z500) |>
-  drop_na()
 
 Thun_Network_data <- read.csv("../data/Thun Messnetz 2024/10min_long_2024-05-01_2024-10-30.csv") |>
   mutate(time = as.POSIXct(time, format = "%Y-%m-%dT%H:%M:%OS", tz="UTC"),
@@ -375,6 +360,79 @@ Thun_Network_data_daily <- read.csv("../data/Thun Messnetz 2024/Thun_daily_summa
   mutate(time_day = as.POSIXct(time_day, format = "%Y-%m-%dT%H:%M:%OS", tz="UTC")) |>
   mutate(time_day = with_tz(time_day, tzone = "Europe/Zurich")) |> #should start at 2024-05-01 02:00
   rename(time = time_day)
+```
+
+
+# Combine all: Meteo, Water, Geospatial, Low Cost Sensor data, and Metadata
+```{r}
+MeteoCH_data <- read.csv("../data/IDAWEB/MeteoCH_Thun.csv") |>
+  mutate(time = as.POSIXct(time, format="%d.%m.%Y %H:%M", tz = "UTC")) |> 
+  mutate(time = with_tz(time, tzone = "Europe/Zurich")) |> #should start at 2024-05-01 02:00
+  select(-X.1, -X, -stn)
+
+MeteoCH_data_10min <- MeteoCH_data |>
+  select(time, temp_air_2m_10min, temp_pot_2m_10m, precip_10min, RH_2m_10min, glob_rad_10min, airpress_10min, wind_vel_10min_ms, wind_vel_10min_kmh, wind_dir_10min, wind_dir_10min_class, wind_dir_10min_NS, CAP9, CAP18, CAP27, GWT8_Z500, GWT10_SLP, GWT10_Z500, GWT18_SLP, GWT18_Z500, GWT26_SLP, GWT26_Z500) |>
+  drop_na()
+
+MeteoCH_data_hourly <- MeteoCH_data |>
+  select(time, temp_air_2m_h, precip_last1h, precip_last24h, precip_last72h, RH_2m_h, glob_rad_h, airpress_h, wind_vel_h_kmh, wind_dir_h, wind_dir_h_class, wind_dir_h_NS, CAP9, CAP18, CAP27, GWT8_Z500, GWT10_SLP, GWT10_Z500, GWT18_SLP, GWT18_Z500, GWT26_SLP, GWT26_Z500) |>
+  drop_na() |>
+  mutate(temp = temp_air_2m_h,
+         pressure = airpress_h,
+         wind_vel = wind_vel_h_kmh,
+         wind_dir = wind_dir_h,
+         rad = glob_rad_h,
+         humidity = RH_2m_h,
+         precip = precip_last1h)
+
+ MeteoCH_data_hourly <- MeteoCH_data_hourly |>
+    arrange(time)|> # make sure it's in the right order
+    mutate(
+      mean_temp_6h = zoo::rollmean(temp, k = 6, fill = NA, align = "right"),
+      mean_temp_12h = zoo::rollmean(temp, k = 12, fill = NA, align = "right"),
+      mean_temp_1d = zoo::rollmean(temp, k = 24 * 1, fill = NA, align = "right"),
+      mean_temp_3d = zoo::rollmean(temp, k = 24 * 3, fill = NA, align = "right"),
+      mean_temp_5d = zoo::rollmean(temp, k = 24 * 5, fill = NA, align = "right"),
+      mean_pressure_6h = zoo::rollmean(pressure, k = 6, fill = NA, align = "right"),
+      mean_pressure_12h = zoo::rollmean(pressure, k = 12, fill = NA, align = "right"),
+      mean_pressure_1d = zoo::rollmean(pressure, k = 24 * 1, fill = NA, align = "right"),
+      mean_pressure_3d = zoo::rollmean(pressure, k = 24 * 3, fill = NA, align = "right"),
+      mean_pressure_5d = zoo::rollmean(pressure, k = 24 * 5, fill = NA, align = "right"),
+      mean_wind_vel_6h = zoo::rollmean(wind_vel, k = 6, fill = NA, align = "right"),
+      mean_wind_vel_12h = zoo::rollmean(wind_vel, k = 12, fill = NA, align = "right"),
+      mean_wind_vel_1d = zoo::rollmean(wind_vel, k = 24 * 1, fill = NA, align = "right"),
+      mean_wind_vel_3d = zoo::rollmean(wind_vel, k = 24 * 3, fill = NA, align = "right"),
+      mean_wind_vel_5d = zoo::rollmean(wind_vel, k = 24 * 5, fill = NA, align = "right"),
+      # mean_wind_dir_6_hours = zoo::rollmean(wind_dir, k = 6, fill = NA, align = "right"),
+      # mean_wind_dir_12_hours = zoo::rollmean(wind_dir, k = 12, fill = NA, align = "right"),
+      # mean_wind_dir_1_day = zoo::rollmean(wind_dir, k = 24 * 1, fill = NA, align = "right"),
+      # mean_wind_dir_3_days = zoo::rollmean(wind_dir, k = 24 * 3, fill = NA, align = "right"),
+      # mean_wind_dir_5_days = zoo::rollmean(wind_dir, k = 24 * 5, fill = NA, align = "right"),
+      mean_rad_6h = zoo::rollmean(rad, k = 6, fill = NA, align = "right"),
+      mean_rad_12h = zoo::rollmean(rad, k = 12, fill = NA, align = "right"),
+      mean_rad_1d = zoo::rollmean(rad, k = 24 * 1, fill = NA, align = "right"),
+      mean_rad_3d = zoo::rollmean(rad, k = 24 * 3, fill = NA, align = "right"),
+      mean_rad_5d = zoo::rollmean(rad, k = 24 * 5, fill = NA, align = "right"),
+      mean_humidity_6h = zoo::rollmean(humidity, k = 6, fill = NA, align = "right"),
+      mean_humidity_12h = zoo::rollmean(humidity, k = 12, fill = NA, align = "right"),
+      mean_humidity_1d = zoo::rollmean(humidity, k = 24 * 1, fill = NA, align = "right"),
+      mean_humidity_3d = zoo::rollmean(humidity, k = 24 * 3, fill = NA, align = "right"),
+      mean_humidity_5d = zoo::rollmean(humidity, k = 24 * 5, fill = NA, align = "right"),
+      sum_precip_6h = zoo::rollsum(precip, k = 6, fill = NA, align = "right"),
+      sum_precip_12h = zoo::rollsum(precip, k = 12, fill = NA, align = "right"),
+      sum_precip_1d = zoo::rollsum(precip, k = 24 * 1, fill = NA, align = "right"),
+      sum_precip_3d = zoo::rollsum(precip, k = 24 * 3, fill = NA, align = "right"),
+      sum_precip_5d = zoo::rollsum(precip, k = 24 * 5, fill = NA, align = "right")) |>
+    mutate_at(vars(starts_with("sum_precip")), ~ ifelse(. < 0.1, 0, .))
+ 
+source("../R/roll_mean_wind_dir.R") 
+ MeteoCH_data_hourly <- roll_mean_wind_dir(
+  df = MeteoCH_data_hourly,
+  dir_col = "wind_dir",
+  speed_col = "wind_vel_h_kmh",
+  k = c(6, 12, 24, 72, 120),
+  suffix = c("6h", "12h", "1d", "3d", "5d")
+)
 ```
 
 # Aggregate the meteodata to daily nighttime data

@@ -1,0 +1,240 @@
+---
+title: "Format_IDAWEB_data"
+author: 'Noémie Wellinger'
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+source("../R/load_packages.R")
+load_packages(c("dplyr", "ggplot2", "climaemet", "openair", "lubridate", "tidyverse"))
+```
+
+Precipitation
+```{r}
+# Load the data
+folder <- "../data/IDAWEB/Precipitation/"
+# read the text file that ends with "data.txt"
+file_path <- list.files(folder, pattern = "data.txt$", full.names = TRUE)
+# read as as text file
+lines <- readLines(file_path)
+
+# Remove empty lines
+lines <- lines[lines != ""]
+
+# Find indices where headers appear
+header_indices <- grep("^stn\\s+time", lines)
+
+# Read the first table
+table1 <- read.table(text = paste(lines[(header_indices[1] + 1):(header_indices[2] - 1)], collapse = "\n"), 
+                     header = FALSE, col.names = c("stn", "time", "rre150z0"),
+                     stringsAsFactors = FALSE)
+# Convert `time` to a proper datetime format (if needed)
+table1$time <- as.POSIXct(as.character(table1$time), format="%Y%m%d%H%M")
+
+# Read the second table
+table2 <- read.table(text = paste(lines[(header_indices[2] + 1):length(lines)], collapse = "\n"), 
+                     header = FALSE, col.names = c("stn", "time", "rre150h0", "rre024i0", "rre072i0"),
+                     stringsAsFactors = FALSE)
+# Convert `time` to a proper datetime format (if needed)
+table2$time <- as.POSIXct(as.character(table2$time), format="%Y%m%d%H")
+
+# Merge both tables on "stn" and "time"
+final_df <- full_join(table1, table2, by = c("stn", "time"))
+
+# rename the columns
+# Parameter Einheit                              Beschreibung
+# rre150h0  mm                                   Niederschlag; Stundensumme
+# rre024i0  mm                                   Niederschlagssumme ?ber 24 Stunden
+# rre072i0  mm                                   Niederschlagssumme ?ber 72 Stunden
+# rre150z0  mm                                   Niederschlag; Zehnminutensumme 
+IDAWEB_final_df <- final_df |>
+  rename(precip_last1h = rre150h0, 
+         precip_last24h = rre024i0,
+         precip_last72h = rre072i0,
+         precip_10min = rre150z0)
+
+# View the final data frame
+print(IDAWEB_final_df)
+```
+Radiation
+```{r}
+folder <- "../data/IDAWEB/Radiation_Humidity_Pressure/"
+file_path <- list.files(folder, pattern = "data.txt$", full.names = TRUE)
+lines <- readLines(file_path)
+lines <- lines[lines != ""]
+header_indices <- grep("^stn\\s+time", lines)
+
+
+table1 <- read.table(text = paste(lines[(header_indices[1] + 1):(header_indices[2] - 1)], collapse = "\n"), 
+                     header = FALSE, col.names = c("stn", "time", "gre000z0", "prestas0", "ure200s0"),
+                     stringsAsFactors = FALSE)
+table1$time <- as.POSIXct(as.character(table1$time), format="%Y%m%d%H%M")
+
+
+table2 <- read.table(text = paste(lines[(header_indices[2] + 1):length(lines)], collapse = "\n"), 
+                     header = FALSE, col.names = c("stn", "time", "gre000h0", "prestah0", "ure200h0"),
+                     stringsAsFactors = FALSE)
+table2$time <- as.POSIXct(as.character(table2$time), format="%Y%m%d%H")
+
+
+final_df <- full_join(table1, table2, by = c("stn", "time"))
+IDAWEB_final_df <- full_join(IDAWEB_final_df, final_df, by = c("stn", "time"))
+
+# Parameter Einheit                              Beschreibung
+# gre000h0  W/m²                                 Globalstrahlung; Stundenmittel
+# prestah0  hPa                                  Luftdruck auf Barometerhöhe (QFE); Stundenmittel
+# ure200h0  %                                    Relative Luftfeuchtigkeit 2 m über Boden; Stundenmittel
+# gre000z0  W/m²                                 Globalstrahlung; Zehnminutenmittel
+# prestas0  hPa                                  Luftdruck auf Barometerhöhe (QFE); Momentanwert
+# ure200s0  %                                    Relative Luftfeuchtigkeit 2 m über Boden; Momentanwert
+
+IDAWEB_final_df <- IDAWEB_final_df |>
+  rename(glob_rad_h = gre000h0,
+         glob_rad_10min = gre000z0,
+         airpress_h = prestah0,
+         airpress_10min = prestas0,
+         RH_2m_h = ure200h0,
+         RH_2m_10min = ure200s0)
+
+print(IDAWEB_final_df)
+```
+
+Temperature
+```{r}
+folder <- "../data/IDAWEB/Temperature/"
+file_path <- list.files(folder, pattern = "data.txt$", full.names = TRUE)
+lines <- readLines(file_path)
+lines <- lines[lines != ""]
+header_indices <- grep("^stn\\s+time", lines)
+
+
+table1 <- read.table(text = paste(lines[(header_indices[1] + 1):(header_indices[2] - 1)], collapse = "\n"), 
+                     header = FALSE, col.names = c("stn", "time", "tre200s0","tpo200s0"),
+                     stringsAsFactors = FALSE)
+table1$time <- as.POSIXct(as.character(table1$time), format="%Y%m%d%H%M")
+
+
+table2 <- read.table(text = paste(lines[(header_indices[2] + 1):length(lines)], collapse = "\n"), 
+                     header = FALSE, col.names = c("stn", "time", "tre200h0"),
+                     stringsAsFactors = FALSE)
+table2$time <- as.POSIXct(as.character(table2$time), format="%Y%m%d%H")
+
+
+final_df <- full_join(table1, table2, by = c("stn", "time"))
+IDAWEB_final_df <- full_join(IDAWEB_final_df, final_df, by = c("stn", "time"))
+
+# Parameter Einheit                              Beschreibung
+# tre200s0  °C                                   Lufttemperatur 2 m über Boden; Momentanwert
+# tpo200s0  °C                                   Potentielle Temperatur 2 m über Boden; Momentanwert
+# tre200h0  °C                                   Lufttemperatur 2 m über Boden; Stundenmittel
+
+IDAWEB_final_df <- IDAWEB_final_df |>
+  rename(temp_air_2m_10min = tre200s0,
+         temp_air_2m_h = tre200h0,
+         temp_pot_2m_10m = tpo200s0)
+
+print(IDAWEB_final_df)
+```
+
+Wind
+```{r}
+folder <- "../data/IDAWEB/Wind/"
+file_path <- list.files(folder, pattern = "data.txt$", full.names = TRUE)
+lines <- readLines(file_path)
+lines <- lines[lines != ""]
+header_indices <- grep("^stn\\s+time", lines)
+
+
+table1 <- read.table(text = paste(lines[(header_indices[1] + 1):(header_indices[2] - 1)], collapse = "\n"), 
+                     header = FALSE, col.names = c("stn", "time", "fkl010z0", "fu3010z0", "dkl010z0"),
+                     stringsAsFactors = FALSE)
+table1$time <- as.POSIXct(as.character(table1$time), format="%Y%m%d%H%M")
+
+
+table2 <- read.table(text = paste(lines[(header_indices[2] + 1):(header_indices[3] - 1)], collapse = "\n"), 
+                     header = FALSE, col.names = c("stn", "time", "fu3010h0", "dkl010h0"),
+                     stringsAsFactors = FALSE)
+table2$time <- as.POSIXct(as.character(table2$time), format="%Y%m%d%H")
+
+table3 <- read.table(text = paste(lines[(header_indices[3] + 1):length(lines)], collapse = "\n"), 
+                     header = FALSE, col.names = c("stn", "time", "dkl010d0"),
+                     stringsAsFactors = FALSE)
+table3$time <- as.POSIXct(as.character(table3$time), format="%Y%m%d")
+
+IDAWEB_final_df <- full_join(IDAWEB_final_df, table1, by = c("stn", "time"))
+IDAWEB_final_df <- full_join(IDAWEB_final_df, table2, by = c("stn", "time"))
+IDAWEB_final_df <- full_join(IDAWEB_final_df, table3, by = c("stn", "time"))
+
+# Parameter Einheit                              Beschreibung
+# fu3010h0  km/h                                 Windgeschwindigkeit skalar; Stundenmittel in km/h
+# dkl010h0  °                                    Windrichtung; Stundenmittel
+# fkl010z0  m/s                                  Windgeschwindigkeit skalar; Zehnminutenmittel in m/s
+# fu3010z0  km/h                                 Windgeschwindigkeit; Zehnminutenmittel in km/h
+# dkl010z0  °                                    Windrichtung; Zehnminutenmittel
+# dkl010d0  °                                    Windrichtung; Tagesmittel
+
+IDAWEB_final_df <- IDAWEB_final_df |>
+  rename(wind_vel_h_kmh = fu3010h0,
+         wind_dir_h = dkl010h0,
+         wind_vel_10min_ms = fkl010z0,
+         wind_vel_10min_kmh = fu3010z0,
+         wind_dir_10min = dkl010z0,
+         wind_dir_d = dkl010d0)
+         
+print(IDAWEB_final_df)
+```
+
+Large-scale weather situaiton
+```{r}
+folder <- "../data/IDAWEB/Weather_Type/"
+file_path <- list.files(folder, pattern = "data.txt$", full.names = TRUE)
+lines <- readLines(file_path)
+lines <- lines[lines != ""]
+header_indices <- grep("^stn\\s+time", lines)
+
+table1 <- read.table(text = paste(lines[(header_indices[1] + 1):length(lines)], collapse = "\n"), 
+                     header = FALSE, col.names = c("stn", "time", "wkcap2d0", "wkcap3d0", "wkcap1d0", "wkwtg1d0", "wkwtp1d0", "wkwtg2d0", "wkwtp2d0", "wkwtg3d0", "wkwtp3d0", "wkwtg0d0"),
+                     stringsAsFactors = FALSE) |>
+  dplyr::select(-stn) |> # remove station because it is not Thun and can be confusing
+  mutate(time = as.POSIXct(as.character(time), format="%Y%m%d")) |>
+  #mutate(time = as.POSIXct(as.character(time), format = "%Y-%m-%d %H:%M:%S")) |>
+  rowwise() |>
+  mutate(time_10min = list(seq(time, time + hours(23) + minutes(50), by = "10 mins"))) |> 
+  unnest(time_10min) |>
+  select(-time) |>
+  rename(time = time_10min)
+
+IDAWEB_final_df <- full_join(IDAWEB_final_df, table1, by = c("time"))
+
+# Parameter Einheit                              Beschreibung
+# wkcap2d0    Code                                 CAP/PCACA mit 18 Klassen basierend auf Bodendruck (3E-20E,41N-52N)
+# wkcap3d0    Code                                 CAP/PCACA mit 27 Klassen basierend auf Bodendruck (3E-20E,41N-52N)
+# wkcap1d0    Code                                 CAP/PCACA mit 9 Klassen basierend auf Bodendruck (3E-20E,41N-52N)
+# wkwtg1d0    Code                                 GWT mit 10 Klassen basierend auf 500hPa Geopotential (3E-20E,41N-52N)
+# wkwtp1d0    Code                                 GWT mit 10 Klassen basierend auf Bodendruck (3E-20E,41N-52N)
+# wkwtg2d0    Code                                 GWT mit 18 Klassen basierend auf 500hPa Geopotential (3E-20E,41N-52N)
+# wkwtp2d0    Code                                 GWT mit 18 Klassen basierend auf Bodendruck (3E-20E,41N-52N)
+# wkwtg3d0    Code                                 GWT mit 26 Klassen basierend auf 500hPa Geopotential (3E-20E,41N-52N)
+# wkwtp3d0    Code                                 GWT mit 26 Klassen basierend auf Bodendruck (3E-20E,41N-52N)
+# wkwtg0d0    Code                                 GWT mit 8 Klassen basierend auf 500hPa Geopotential (5E-12E,45N-49N)
+
+IDAWEB_final_df <- IDAWEB_final_df |>
+  rename(CAP18 = wkcap2d0,
+         CAP27 = wkcap3d0,
+         CAP9 = wkcap1d0,
+         GWT10_Z500 = wkwtg1d0,
+         GWT10_SLP = wkwtp1d0,
+         GWT18_Z500 = wkwtg2d0,
+         GWT18_SLP = wkwtp2d0,
+         GWT26_Z500 = wkwtg3d0,
+         GWT26_SLP = wkwtp3d0,
+         GWT8_Z500 = wkwtg0d0)
+
+print(IDAWEB_final_df)
+```
+
+```{r}
+# save the dataframe
+write.csv(IDAWEB_final_df, "../data/IDAWEB/MeteoCH_Thun.csv")
+```

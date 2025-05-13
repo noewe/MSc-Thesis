@@ -1,0 +1,429 @@
+---
+title: "Wind_analysis"
+author: 'Noémie Wellinger'
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+ Wind data analysis
+First, we look at some wind roses.
+```{r}
+# Wind direction
+MeteoCH_data_wind <- all_data_10min |>
+  select(time, wind_dir_10min, wind_vel_10min_ms, wind_dir_10min_class, wind_dir_10min_NS, UHI, LU_7.type) |>
+  drop_na()
+
+ggwindrose(
+  speed = MeteoCH_data_wind$wind_vel_10min_ms,
+  direction = MeteoCH_data_wind$wind_dir_10min,
+  speed_cuts = c(1, 2, 4, 8, 12),
+  legend_title = "Wind speed (m/s)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Thun Wind Rose",
+) + labs(
+  subtitle = "May-Oct 2024",
+  caption = "Source: MeteoSwiss"
+)
+ggsave("../figures/Windroses/Wind_Rose_10min_data.png", width = 6, height = 5, dpi = 300)
+
+# Nighttime wind
+MeteoCH_data_wind_night <- MeteoCH_data_wind |>
+  filter(hour(time) >= 22 | hour(time) <= 6)
+
+ggwindrose(
+  speed = MeteoCH_data_wind_night$wind_vel_10min_ms,
+  direction = MeteoCH_data_wind_night$wind_dir_10min,
+  speed_cuts = c(1, 2, 4, 8, 12),
+  legend_title = "Wind speed (m/s)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Thun Wind Rose NIGHT (22pm-6am)",
+) + labs(
+  subtitle = "May-Oct 2024",
+  caption = "Source: MeteoSwiss"
+)
+ggsave("../figures/Windroses/Wind_Rose_10min_data_night.png", width = 6, height = 5, dpi = 300)
+
+# Daytime wind
+MeteoCH_data_wind_day <- MeteoCH_data_wind |>
+  filter(hour(time) >= 6 & hour(time) <= 22)
+ggwindrose(
+  speed = MeteoCH_data_wind_day$wind_vel_10min_ms,
+  direction = MeteoCH_data_wind_day$wind_dir_10min,
+  speed_cuts = c(1, 2, 4, 8, 12),
+  #speed_cuts = c(1, 2, 3, 5, 12),
+  legend_title = "Wind speed (m/s)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Thun Wind Rose DAY (6am-10pm)",
+) + labs(
+  subtitle = "May-Oct 2024",
+  caption = "Source: MeteoSwiss"
+)
+ggsave("../figures/Windroses/Wind_Rose_10min_data_day.png", width = 6, height = 5, dpi = 300)
+```
+
+Plot windroses for different UHIs
+```{r}
+# filter for land use
+MeteoCH_data_wind_UHI <- MeteoCH_data_wind |>
+  filter(LU_7.type == "dense urban" | LU_7.type == "green urban" | LU_7.type == "rural") |>
+  group_by(time) |>
+  summarise(wind_dir_10min = mean(wind_dir_10min, na.rm = TRUE),
+            wind_vel_10min_ms = mean(wind_vel_10min_ms, na.rm = TRUE),
+            wind_dir_10min_NS = first(wind_dir_10min_NS),
+            UHI = mean(UHI, na.rm = TRUE),
+            LU_7.type = first(LU_7.type))
+
+# Plot distribution of UHI
+ggplot(MeteoCH_data_wind_UHI, aes(x = UHI)) +
+  geom_histogram(binwidth = 0.5, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Distribution of UHI",
+       x = "UHI",
+       y = "Frequency") +
+  theme_minimal()
+
+MeteoCH_data_wind_UHI_1 <- MeteoCH_data_wind_UHI |>
+  filter(UHI > 1)
+
+# plot the windrose
+ggwindrose(
+  speed = MeteoCH_data_wind_UHI_1$wind_vel_10min_ms,
+  direction = MeteoCH_data_wind_UHI_1$wind_dir_10min,
+  speed_cuts = c(1, 2, 4, 8, 12),
+  legend_title = "Wind speed (m/s)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Thun Wind Rose UHI > 1",
+) + labs(
+  subtitle = "May-Oct 2024",
+  caption = "Source: MeteoSwiss"
+)
+
+MeteoCH_data_wind_UHI_neg <- MeteoCH_data_wind_UHI |>
+  filter(UHI < 0)
+
+# plot the windrose
+ggwindrose(
+  speed = MeteoCH_data_wind_UHI_neg$wind_vel_10min_ms,
+  direction = MeteoCH_data_wind_UHI_neg$wind_dir_10min,
+  speed_cuts = c(1, 2, 4, 8, 12),
+  legend_title = "Wind speed (m/s)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Thun Wind Rose UHI < 0",
+) + labs(
+  subtitle = "May-Oct 2024",
+  caption = "Source: MeteoSwiss"
+)
+
+# plot windroses only for nighttime
+MeteoCH_data_wind_UHI_1_night <- MeteoCH_data_wind_UHI_1 |>
+  filter(hour(time) >= 22 | hour(time) <= 6)
+ggwindrose(
+  speed = MeteoCH_data_wind_UHI_1_night$wind_vel_10min_ms,
+  direction = MeteoCH_data_wind_UHI_1_night$wind_dir_10min,
+  speed_cuts = c(1, 2, 4, 8, 12),
+  legend_title = "Wind speed (m/s)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Thun Wind Rose nightly UHI > 1 (22pm-6am)",
+) + labs(
+  subtitle = "May-Oct 2024",
+  caption = "Source: MeteoSwiss"
+)
+
+MeteoCH_data_wind_UHI_neg_night <- MeteoCH_data_wind_UHI_neg |>
+  filter(hour(time) >= 22 | hour(time) <= 6)
+ggwindrose(
+  speed = MeteoCH_data_wind_UHI_neg_night$wind_vel_10min_ms,
+  direction = MeteoCH_data_wind_UHI_neg_night$wind_dir_10min,
+  speed_cuts = c(1, 2, 4, 8, 12),
+  legend_title = "Wind speed (m/s)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Thun Wind Rose nightly UHI < 0 (22pm-6am)",
+) + labs(
+  subtitle = "May-Oct 2024",
+  caption = "Source: MeteoSwiss"
+)
+
+```
+
+
+# Correlate wind speed and direction with UHI
+```{r}
+# Correlate wind speed and direction with UHI
+# symbol of the points should be according to wind_dir_10min_NS
+ggplot(MeteoCH_data_wind_UHI, aes(x = wind_vel_10min_ms, y = UHI, color = wind_dir_10min_NS)) +
+  geom_point(alpha = 0.4) +  # semi-transparent points
+  geom_smooth(method = "lm", se = FALSE) +  # regression lines per group
+  labs(
+    title = "Correlation between Wind Speed and UHI",
+    x = "Wind Speed (m/s)",
+    y = "UHI"
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c("N" = "blue", "S" = "red"))
+
+
+```
+
+Do the whole thing again with hourly data
+```{r}
+# Wind direction
+MeteoCH_data_wind <- all_data_hourly |>
+  select(time, wind_dir_h, wind_vel_h_kmh, wind_dir_h_class, wind_dir_h_NS, UHI_mean, LU_7.type) |>
+  drop_na()
+
+ggwindrose(
+  speed = MeteoCH_data_wind$wind_vel_h_kmh,
+  direction = MeteoCH_data_wind$wind_dir_h,
+  speed_cuts = c(2, 5, 10, 20),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Thun Wind Rose",
+) + labs(
+  subtitle = "May-Oct 2024",
+  caption = "Source: MeteoSwiss"
+)
+
+# Nighttime wind
+MeteoCH_data_wind_night <- MeteoCH_data_wind |>
+  filter(hour(time) >= 22 | hour(time) <= 6)
+
+ggwindrose(
+  speed = MeteoCH_data_wind_night$wind_vel_h_kmh,
+  direction = MeteoCH_data_wind_night$wind_dir_h,
+  speed_cuts = c(2, 5, 10, 20),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Thun Wind Rose NIGHT (22pm-6am)",
+) + labs(
+  subtitle = "May-Oct 2024",
+  caption = "Source: MeteoSwiss"
+)
+
+# Daytime wind
+MeteoCH_data_wind_day <- MeteoCH_data_wind |>
+  filter(hour(time) >= 6 & hour(time) <= 22)
+ggwindrose(
+  speed = MeteoCH_data_wind_day$wind_vel_h_kmh,
+  direction = MeteoCH_data_wind_day$wind_dir_h,
+  speed_cuts = c(2, 5, 10, 20),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Thun Wind Rose DAY (6am-10pm)",
+) + labs(
+  subtitle = "May-Oct 2024",
+  caption = "Source: MeteoSwiss"
+)
+
+
+```
+
+
+```{r}
+# filter for land use
+MeteoCH_data_wind_UHI <- MeteoCH_data_wind |>
+  filter(LU_7.type == "dense urban" | LU_7.type == "green urban" | LU_7.type == "rural") |>
+  group_by(time) |>
+  summarise(wind_dir_h = mean(wind_dir_h, na.rm = TRUE),
+            wind_vel_h_kmh = mean(wind_vel_h_kmh, na.rm = TRUE),
+            wind_dir_h_NS = first(wind_dir_h_NS),
+            UHI = mean(UHI_mean, na.rm = TRUE),
+            LU_7.type = first(LU_7.type))
+
+MeteoCH_data_wind_UHI_1 <- MeteoCH_data_wind_UHI |>
+  filter(UHI > 1)
+
+# plot the windrose
+ggwindrose(
+  speed = MeteoCH_data_wind_UHI_1$wind_vel_h_kmh,
+  direction = MeteoCH_data_wind_UHI_1$wind_dir_h,
+  speed_cuts = c(2, 5, 10, 20),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Thun Wind Rose UHI > 1",
+) + labs(
+  subtitle = "May-Oct 2024",
+  caption = "Source: MeteoSwiss"
+)
+ggsave("../figures/Windroses/Wind_Rose_UHIover1.png", width = 6, height = 5, dpi = 300)
+
+MeteoCH_data_wind_UHI_neg <- MeteoCH_data_wind_UHI |>
+  filter(UHI < 0)
+
+# plot the windrose
+ggwindrose(
+  speed = MeteoCH_data_wind_UHI_neg$wind_vel_h_kmh,
+  direction = MeteoCH_data_wind_UHI_neg$wind_dir_h,
+  speed_cuts = c(2, 5, 10, 20),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Thun Wind Rose UHI < 0",
+) + labs(
+  subtitle = "May-Oct 2024",
+  caption = "Source: MeteoSwiss"
+)
+ggsave("../figures/Windroses/Wind_Rose_UHIneg.png", width = 6, height = 5, dpi = 300)
+
+MeteoCH_data_wind_UHI_low <- MeteoCH_data_wind_UHI |>
+  filter(UHI > -0.3 & UHI < 0.3)
+
+# plot the windrose
+ggwindrose(
+  speed = MeteoCH_data_wind_UHI_low$wind_vel_h_kmh,
+  direction = MeteoCH_data_wind_UHI_low$wind_dir_h,
+  speed_cuts = c(2, 5, 10, 20),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Thun Wind Rose low UHI (-0.3 < UHI < 0.3) ",
+) + labs(
+  subtitle = "May-Oct 2024",
+  caption = "Source: MeteoSwiss"
+)
+ggsave("../figures/Windroses/Wind_Rose_UHIlow.png", width = 6, height = 5, dpi = 300)
+
+# plot windroses only for nighttime
+MeteoCH_data_wind_UHI_1_night <- MeteoCH_data_wind_UHI_1 |>
+  filter(hour(time) >= 22 | hour(time) <= 6)
+ggwindrose(
+  speed = MeteoCH_data_wind_UHI_1_night$wind_vel_h_kmh,
+  direction = MeteoCH_data_wind_UHI_1_night$wind_dir_h,
+  speed_cuts = c(2, 5, 10, 20, 40),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Thun Wind Rose nightly UHI > 1 (22pm-6am)",
+) + labs(
+  subtitle = "May-Oct 2024",
+  caption = "Source: MeteoSwiss"
+)
+ggsave("../figures/Windroses/Wind_Rose_UHIover1_night.png", width = 6, height = 5, dpi = 300)
+
+MeteoCH_data_wind_UHI_neg_night <- MeteoCH_data_wind_UHI_neg |>
+  filter(hour(time) >= 22 | hour(time) <= 6)
+ggwindrose(
+  speed = MeteoCH_data_wind_UHI_neg_night$wind_vel_h_kmh,
+  direction = MeteoCH_data_wind_UHI_neg_night$wind_dir_h,
+  speed_cuts = c(2, 5, 10, 20, 40),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Thun Wind Rose nightly UHI < 0 (22pm-6am)",
+) + labs(
+  subtitle = "May-Oct 2024",
+  caption = "Source: MeteoSwiss"
+)
+ggsave("../figures/Windroses/Wind_Rose_UHIneg_night.png", width = 6, height = 5, dpi = 300)
+
+# low UHI during night
+MeteoCH_data_wind_UHI_low_night <- MeteoCH_data_wind_UHI_low |>
+  filter(hour(time) >= 22 | hour(time) <= 6)
+
+ggwindrose(
+  speed = MeteoCH_data_wind_UHI_low_night$wind_vel_h_kmh,
+  direction = MeteoCH_data_wind_UHI_low_night$wind_dir_h,
+  speed_cuts = c(2, 5, 10, 20, 40),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Thun Wind Rose nightly low UHI (-0.3 < UHI < 0.3) (22pm-6am)",
+) + labs(
+  subtitle = "May-Oct 2024",
+  caption = "Source: MeteoSwiss"
+)
+ggsave("../figures/Windroses/Wind_Rose_UHIlow_night.png", width = 6, height = 5, dpi = 300)
+
+```
+
+```{r}
+# Correlate wind speed and direction with UHI
+# symbol of the points should be according to wind_dir_10min_NS
+ggplot(MeteoCH_data_wind_UHI, aes(x = wind_vel_h_kmh, y = UHI, color = wind_dir_h_NS)) +
+  geom_point(alpha = 0.4) +  # semi-transparent points
+  geom_smooth(method = "lm", se = FALSE) +  # regression lines per group
+  labs(
+    title = "Correlation between Wind Speed and UHI",
+    x = "Wind Speed (km/h)",
+    y = "UHI"
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c("N" = "purple", "S" = "darkcyan"))
+
+# If we cut all above 10 km/h windspeed, the regression is different:
+MeteoCH_data_wind_UHI |>
+  filter(hour(time) >= 22 | hour(time) <= 6) |>
+ggplot( aes(x = wind_vel_h_kmh, y = UHI, color = wind_dir_h_NS)) +
+  geom_point(alpha = 0.4) +  # semi-transparent points
+  geom_smooth(method = "lm", se = FALSE) +  # regression lines per group
+  labs(
+    title = "Correlation between Wind Speed and nighttime UHI",
+    x = "Wind Speed (km/h)",
+    y = "UHI"
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c("N" = "purple", "S" = "darkcyan"))
+
+MeteoCH_data_wind_UHI |>
+  filter(wind_vel_h_kmh < 10) |>
+  filter(hour(time) >= 22 | hour(time) <= 6) |>
+  ggplot(aes(x = wind_vel_h_kmh, y = UHI, color = wind_dir_h_NS)) +
+  geom_point(alpha = 0.4) +  # semi-transparent points
+  geom_smooth(method = "lm", se = FALSE) +  # regression lines per group
+  labs(
+    title = "Correlation between Wind Speed and nighttime UHI",
+    x = "Wind Speed (km/h)",
+    y = "UHI"
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c("N" = "purple", "S" = "darkcyan"))
+
+MeteoCH_data_wind_UHI |> # seems like the hours are not really decisive
+  filter(wind_vel_h_kmh < 10) |>
+  filter(hour(time) >= 22 | hour(time) <= 6) |>
+  ggplot(aes(x = wind_vel_h_kmh, y = UHI, color = as.factor(hour(time)))) +
+  geom_point(alpha = 0.4) +  # semi-transparent points
+  geom_smooth(method = "lm", se = FALSE) +  # regression lines per group
+  labs(
+    title = "Correlation between Wind Speed and nighttime UHI",
+    x = "Wind Speed (km/h)",
+    y = "UHI"
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c("22" = "#ffff55", "23" = "#ffcc00", "0" = "#ffaa11", "1" = "#ff8022", "2" = "#ff6622", "3" = "#ff5044", "4" = "#ee5077", "5" = "#dd4099", "6" = "magenta"))
+```
+
+Plot hourly UHI and wind direction
+```{r}
+p <- ggplot(MeteoCH_data_wind_UHI, aes(x = time, y = UHI)) +
+  geom_line() +  # semi-transparent points
+    # Custom the Y scales:
+  scale_y_continuous(
+    
+    # Features of the first axis
+    name = "UHI",
+    
+    # Add a second axis and specify its features
+    sec.axis = sec_axis( trans=~.*100, name="Wind direction")
+  ) +
+  # add wind direction on secondary y axis
+  geom_point(aes(y = wind_dir_h/100), color = "#4466dd") +
+  labs(
+    title = "UHI and wind direction",
+    x = "time",
+  ) +
+  theme_minimal()
+
+plotly::ggplotly(p) |>
+  layout(yaxis2 = list(overlaying = "y", side = "right", title = "Wind direction"))
+
+```
