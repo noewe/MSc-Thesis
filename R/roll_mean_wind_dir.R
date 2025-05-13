@@ -32,7 +32,7 @@ roll_mean_wind_dir <- function(df, dir_col, speed_col = NULL, k = c(24), align =
     
     wd_roll <- (atan2(-u_roll, -v_roll) * 180 / pi) %% 360
     
-    new_colname <- paste0("mean", dir_col, "_", suffix[count])
+    new_colname <- paste0("mean_", dir_col, "_", suffix[count])
     df[[new_colname]] <- wd_roll
     count = count + 1
   }
