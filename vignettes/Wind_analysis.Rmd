@@ -7,6 +7,13 @@ output: html_document
 
  Wind data analysis
 First, we look at some wind roses.
+
+```{r}
+source("../R/load_packages.R")
+load_packages(c("openair", "lubridate", "dplyr", "ggplot2", "climaemet"))
+```
+
+
 ```{r}
 # Wind direction
 MeteoCH_data_wind <- all_data_10min |>
@@ -427,3 +434,7 @@ plotly::ggplotly(p) |>
   layout(yaxis2 = list(overlaying = "y", side = "right", title = "Wind direction"))
 
 ```
+
+
+
+

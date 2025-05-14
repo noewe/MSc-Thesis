@@ -32,10 +32,47 @@ roll_mean_wind_dir <- function(df, dir_col, speed_col = NULL, k = c(24), align =
     
     wd_roll <- (atan2(-u_roll, -v_roll) * 180 / pi) %% 360
     
-    new_colname <- paste0("mean_", dir_col, "_", suffix[count])
+    new_colname <- paste0(dir_col, "_", suffix[count])
     df[[new_colname]] <- wd_roll
     count = count + 1
   }
   
   return(df)
+}
+
+
+
+#' @title Classify Wind Direction
+#' @description
+#' Classifies wind direction in degrees into cardinal and intercardinal directions.
+#' @param degrees numeric wind direction in degrees
+#' @return A factor with levels "N", "NE", "E", "SE", "S", "SW", "W", "NW"
+
+classify_wind_dir <- function(degrees) {
+  dir_labels <- c("N", "NE", "E", "SE", "S", "SW", "W", "NW")
+  breaks <- seq(-22.5, 360, by = 45)  # Note: covers wrap-around for N
+  
+  # Use cut() to assign class
+  cut(
+    degrees %% 360, 
+    breaks = breaks, 
+    labels = dir_labels, 
+    include.lowest = TRUE, 
+    right = FALSE
+  )
+}
+
+# Same function as above but only for N and S
+classify_wind_dir_NS <- function(degrees) {
+  dir_labels <- c("N", "S")
+  breaks <- c(-22.5, 157.5, 360)  # Note: covers wrap-around for N
+  
+  # Use cut() to assign class
+  cut(
+    degrees %% 360, 
+    breaks = breaks, 
+    labels = dir_labels, 
+    include.lowest = TRUE, 
+    right = FALSE
+  )
 }

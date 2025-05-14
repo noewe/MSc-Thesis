@@ -168,6 +168,39 @@ Thun_Network_data_daily <- read.csv("../data/Thun Messnetz 2024/Thun_daily_summa
   rename(time = time_day)
 ```
 
+Load the wind data from Strandbad
+```{r}
+strandbad <- read.csv("../data/external/Thunerwetter/hourly_wind_24-05-01_24-10-31.CSV") 
+
+# Lookup table for wind direction in degrees
+dir_lookup <- c(
+  "N" = 0,
+  "N-NO" = 22.5,
+  "NO" = 45,
+  "O-NO" = 67.5,
+  "O" = 90,
+  "O-SO" = 112.5,
+  "SO" = 135,
+  "S-SO" = 157.5,
+  "S" = 180,
+  "S-SW" = 202.5,
+  "SW" = 225,
+  "W-SW" = 247.5,
+  "W" = 270,
+  "W-NW" = 292.5,
+  "NW" = 315,
+  "N-NW" = 337.5
+)
+
+strandbad <- strandbad |>
+  mutate(
+    time = dmy_hm(paste(Datum, Zeit), tz = "Europe/Zurich"),
+    wind_dir_lake = dir_lookup[wind_dir],
+    wind_vel_lake = wind_vel
+  ) |>
+  select(time, wind_dir_lake, wind_vel_lake)
+```
+
 # Aggregate MeteoCH data and add memory/rolling means
 ```{r}
 MeteoCH_data <- read.csv("../data/IDAWEB/MeteoCH_Thun.csv") |>
@@ -190,61 +223,74 @@ MeteoCH_data_hourly <- MeteoCH_data |>
          humidity = RH_2m_h,
          precip = precip_last1h) |>
   # join with water_temp data
-  left_join(Water_data_hourly, by = "time")
+  left_join(Water_data_hourly, by = "time") |>
+  left_join(strandbad, by = "time")
 
  MeteoCH_data_hourly <- MeteoCH_data_hourly |>
     arrange(time)|> # make sure it's in the right order
     mutate(
-      mean_air_temp_8h = zoo::rollmean(air_temp, k = 8, fill = NA, align = "right"),
-      mean_air_temp_16h = zoo::rollmean(air_temp, k = 16, fill = NA, align = "right"),
-      mean_air_temp_1d = zoo::rollmean(air_temp, k = 24 * 1, fill = NA, align = "right"),
-      mean_air_temp_3d = zoo::rollmean(air_temp, k = 24 * 3, fill = NA, align = "right"),
-      mean_air_temp_5d = zoo::rollmean(air_temp, k = 24 * 5, fill = NA, align = "right"),
-      mean_pressure_8h = zoo::rollmean(pressure, k = 8, fill = NA, align = "right"),
-      mean_pressure_16h = zoo::rollmean(pressure, k = 16, fill = NA, align = "right"),
-      mean_pressure_1d = zoo::rollmean(pressure, k = 24 * 1, fill = NA, align = "right"),
-      mean_pressure_3d = zoo::rollmean(pressure, k = 24 * 3, fill = NA, align = "right"),
-      mean_pressure_5d = zoo::rollmean(pressure, k = 24 * 5, fill = NA, align = "right"),
-      mean_wind_vel_8h = zoo::rollmean(wind_vel, k = 8, fill = NA, align = "right"),
-      mean_wind_vel_16h = zoo::rollmean(wind_vel, k = 16, fill = NA, align = "right"),
-      mean_wind_vel_1d = zoo::rollmean(wind_vel, k = 24 * 1, fill = NA, align = "right"),
-      mean_wind_vel_3d = zoo::rollmean(wind_vel, k = 24 * 3, fill = NA, align = "right"),
-      mean_wind_vel_5d = zoo::rollmean(wind_vel, k = 24 * 5, fill = NA, align = "right"),
-      mean_rad_8h = zoo::rollmean(rad, k = 8, fill = NA, align = "right"),
-      mean_rad_16h = zoo::rollmean(rad, k = 16, fill = NA, align = "right"),
-      mean_rad_1d = zoo::rollmean(rad, k = 24 * 1, fill = NA, align = "right"),
-      mean_rad_3d = zoo::rollmean(rad, k = 24 * 3, fill = NA, align = "right"),
-      mean_rad_5d = zoo::rollmean(rad, k = 24 * 5, fill = NA, align = "right"),
-      mean_humidity_8h = zoo::rollmean(humidity, k = 8, fill = NA, align = "right"),
-      mean_humidity_16h = zoo::rollmean(humidity, k = 16, fill = NA, align = "right"),
-      mean_humidity_1d = zoo::rollmean(humidity, k = 24 * 1, fill = NA, align = "right"),
-      mean_humidity_3d = zoo::rollmean(humidity, k = 24 * 3, fill = NA, align = "right"),
-      mean_humidity_5d = zoo::rollmean(humidity, k = 24 * 5, fill = NA, align = "right"),
-      sum_precip_8h = zoo::rollsum(precip, k = 8, fill = NA, align = "right"),
-      sum_precip_16h = zoo::rollsum(precip, k = 16, fill = NA, align = "right"),
-      sum_precip_1d = zoo::rollsum(precip, k = 24 * 1, fill = NA, align = "right"),
-      sum_precip_3d = zoo::rollsum(precip, k = 24 * 3, fill = NA, align = "right"),
-      sum_precip_5d = zoo::rollsum(precip, k = 24 * 5, fill = NA, align = "right"),
-      mean_water_temp_8h = zoo::rollmean(water_temp, k = 8, fill = NA, align = "right"),
-      mean_water_temp_16h = zoo::rollmean(water_temp, k = 16, fill = NA, align = "right"),
-      mean_water_temp_1d = zoo::rollmean(water_temp, k = 24 * 1, fill = NA, align = "right"),
-      mean_water_temp_3d = zoo::rollmean(water_temp, k = 24 * 3, fill = NA, align = "right"),
-      mean_water_temp_5d = zoo::rollmean(water_temp, k = 24 * 5, fill = NA, align = "right"),
-      mean_water_temp_surface_8h = zoo::rollmean(water_temp_surface, k = 8, fill = NA, align = "right"),
-      mean_water_temp_surface_16h = zoo::rollmean(water_temp_surface, k = 16, fill = NA, align = "right"),
-      mean_water_temp_surface_1d = zoo::rollmean(water_temp_surface, k = 24 * 1, fill = NA, align = "right"),
-      mean_water_temp_surface_3d = zoo::rollmean(water_temp_surface, k = 24 * 3, fill = NA, align = "right"),
-      mean_water_temp_surface_5d = zoo::rollmean(water_temp_surface, k = 24 * 5, fill = NA, align = "right")) |>
-    mutate_at(vars(starts_with("sum_precip")), ~ ifelse(. < 0.1, 0, .))
+      air_temp_8h = zoo::rollmean(air_temp, k = 8, fill = NA, align = "right"),
+      air_temp_16h = zoo::rollmean(air_temp, k = 16, fill = NA, align = "right"),
+      air_temp_1d = zoo::rollmean(air_temp, k = 24 * 1, fill = NA, align = "right"),
+      air_temp_3d = zoo::rollmean(air_temp, k = 24 * 3, fill = NA, align = "right"),
+      air_temp_5d = zoo::rollmean(air_temp, k = 24 * 5, fill = NA, align = "right"),
+      pressure_8h = zoo::rollmean(pressure, k = 8, fill = NA, align = "right"),
+      pressure_16h = zoo::rollmean(pressure, k = 16, fill = NA, align = "right"),
+      pressure_1d = zoo::rollmean(pressure, k = 24 * 1, fill = NA, align = "right"),
+      pressure_3d = zoo::rollmean(pressure, k = 24 * 3, fill = NA, align = "right"),
+      pressure_5d = zoo::rollmean(pressure, k = 24 * 5, fill = NA, align = "right"),
+      wind_vel_8h = zoo::rollmean(wind_vel, k = 8, fill = NA, align = "right"),
+      wind_vel_16h = zoo::rollmean(wind_vel, k = 16, fill = NA, align = "right"),
+      wind_vel_1d = zoo::rollmean(wind_vel, k = 24 * 1, fill = NA, align = "right"),
+      wind_vel_3d = zoo::rollmean(wind_vel, k = 24 * 3, fill = NA, align = "right"),
+      wind_vel_5d = zoo::rollmean(wind_vel, k = 24 * 5, fill = NA, align = "right"),
+      wind_vel_lake_8h = zoo::rollmean(wind_vel_lake, k = 8, fill = NA, align = "right"),
+      wind_vel_lake_16h = zoo::rollmean(wind_vel_lake, k = 16, fill = NA, align = "right"),
+      wind_vel_lake_1d = zoo::rollmean(wind_vel_lake, k = 24 * 1, fill = NA, align = "right"),
+      wind_vel_lake_3d = zoo::rollmean(wind_vel_lake, k = 24 * 3, fill = NA, align = "right"),
+      wind_vel_lake_5d = zoo::rollmean(wind_vel_lake, k = 24 * 5, fill = NA, align = "right"),
+      rad_8h = zoo::rollmean(rad, k = 8, fill = NA, align = "right"),
+      rad_16h = zoo::rollmean(rad, k = 16, fill = NA, align = "right"),
+      rad_1d = zoo::rollmean(rad, k = 24 * 1, fill = NA, align = "right"),
+      rad_3d = zoo::rollmean(rad, k = 24 * 3, fill = NA, align = "right"),
+      rad_5d = zoo::rollmean(rad, k = 24 * 5, fill = NA, align = "right"),
+      humidity_8h = zoo::rollmean(humidity, k = 8, fill = NA, align = "right"),
+      humidity_16h = zoo::rollmean(humidity, k = 16, fill = NA, align = "right"),
+      humidity_1d = zoo::rollmean(humidity, k = 24 * 1, fill = NA, align = "right"),
+      humidity_3d = zoo::rollmean(humidity, k = 24 * 3, fill = NA, align = "right"),
+      humidity_5d = zoo::rollmean(humidity, k = 24 * 5, fill = NA, align = "right"),
+      precip_8h = zoo::rollsum(precip, k = 8, fill = NA, align = "right"),
+      precip_16h = zoo::rollsum(precip, k = 16, fill = NA, align = "right"),
+      precip_1d = zoo::rollsum(precip, k = 24 * 1, fill = NA, align = "right"),
+      precip_3d = zoo::rollsum(precip, k = 24 * 3, fill = NA, align = "right"),
+      precip_5d = zoo::rollsum(precip, k = 24 * 5, fill = NA, align = "right"),
+      water_temp_8h = zoo::rollmean(water_temp, k = 8, fill = NA, align = "right"),
+      water_temp_16h = zoo::rollmean(water_temp, k = 16, fill = NA, align = "right"),
+      water_temp_1d = zoo::rollmean(water_temp, k = 24 * 1, fill = NA, align = "right"),
+      water_temp_3d = zoo::rollmean(water_temp, k = 24 * 3, fill = NA, align = "right"),
+      water_temp_5d = zoo::rollmean(water_temp, k = 24 * 5, fill = NA, align = "right"),
+      water_temp_surface_8h = zoo::rollmean(water_temp_surface, k = 8, fill = NA, align = "right"),
+      water_temp_surface_16h = zoo::rollmean(water_temp_surface, k = 16, fill = NA, align = "right"),
+      water_temp_surface_1d = zoo::rollmean(water_temp_surface, k = 24 * 1, fill = NA, align = "right"),
+      water_temp_surface_3d = zoo::rollmean(water_temp_surface, k = 24 * 3, fill = NA, align = "right"),
+      water_temp_surface_5d = zoo::rollmean(water_temp_surface, k = 24 * 5, fill = NA, align = "right")) |>
+    mutate_at(vars(starts_with("precip")), ~ ifelse(. < 0.1, 0, .))
  
-source("../R/roll_mean_wind_dir.R") 
- MeteoCH_data_hourly <- roll_mean_wind_dir(
+source("../R/wind_helpers.R") 
+MeteoCH_data_hourly <- roll_mean_wind_dir(
   df = MeteoCH_data_hourly,
   dir_col = "wind_dir",
   speed_col = "wind_vel",
   k = c(8, 16, 24, 72, 120),
   suffix = c("8h", "16h", "1d", "3d", "5d")
 )
+MeteoCH_data_hourly <- roll_mean_wind_dir(
+  df = MeteoCH_data_hourly,
+  dir_col = "wind_dir_lake",
+  speed_col = "wind_vel_lake",
+  k = c(8, 16, 24, 72, 120),
+  suffix = c("8h", "16h", "1d", "3d", "5d")
+) 
 ```
 
 # Aggregate the meteodata to daily nighttime data
@@ -254,9 +300,10 @@ MeteoCH_data_night <- MeteoCH_data_hourly |>
   # shift time 7h back
   mutate(time = time - hours(7)) |>
   group_by(date = as.Date(time)) |>
-  select(-air_temp, -precip, -humidity, -rad, -pressure, -wind_vel, -wind_dir, -water_temp, -water_temp_surface,
-         -mean_air_temp_16h, -sum_precip_16h, -mean_humidity_16h, -mean_rad_16h, -mean_pressure_16h, -mean_wind_vel_16h, -mean_wind_dir_16h,
-         -mean_water_temp_16h, -mean_water_temp_surface_16h) |>
+  select(-air_temp, -precip, -humidity, -rad, -pressure, 
+         -wind_vel, -wind_dir, -water_temp, -water_temp_surface, -wind_dir_lake, -wind_vel_lake,
+         -air_temp_16h, -precip_16h, -humidity_16h, -rad_16h, -pressure_16h, 
+         -wind_vel_16h, -wind_dir_16h, -water_temp_16h, -water_temp_surface_16h, -wind_vel_lake_16h, -wind_dir_lake_16h) |>
   # summarize all variables by taking the value of the last hour (i.e. hour(time = 23))
   slice_max(order_by = time, n = 1) |>
   ungroup() |>
@@ -266,66 +313,52 @@ MeteoCH_data_night <- MeteoCH_data_hourly |>
 
 # Classify precipitation
 MeteoCH_data_night <- MeteoCH_data_night |>
-  mutate(precip_8h_boolean = ifelse(sum_precip_8h > 0.3, 1, 0),
-         precip_1d_boolean = ifelse(sum_precip_1d > 0.3, 1, 0),
-         precip_3d_boolean = ifelse(sum_precip_3d > 0.3, 1, 0),
-         precip_5d_boolean = ifelse(sum_precip_5d > 0.3, 1, 0))
+  mutate(precip_8h_boolean = ifelse(precip_8h > 0.3, 1, 0),
+         precip_1d_boolean = ifelse(precip_1d > 0.3, 1, 0),
+         precip_3d_boolean = ifelse(precip_3d > 0.3, 1, 0),
+         precip_5d_boolean = ifelse(precip_5d > 0.3, 1, 0))
 
 # Classify Wind
 MeteoCH_data_night <- MeteoCH_data_night |>
   mutate(
-    wind_dir_8h_class = case_when(
-      mean_wind_dir_8h < 22.5 & mean_wind_dir_8h >= 337.5 ~ "N",
-      mean_wind_dir_8h >= 22.5 & mean_wind_dir_8h < 67.5 ~ "NE",
-      mean_wind_dir_8h >= 67.5 & mean_wind_dir_8h < 112.5 ~ "E",
-      mean_wind_dir_8h >= 112.5 & mean_wind_dir_8h < 157.5 ~ "SE",
-      mean_wind_dir_8h >= 157.5 & mean_wind_dir_8h < 202.5 ~ "S",
-      mean_wind_dir_8h >= 202.5 & mean_wind_dir_8h < 247.5 ~ "SW",
-      mean_wind_dir_8h >= 247.5 & mean_wind_dir_8h < 292.5 ~ "W",
-      mean_wind_dir_8h >= 292.5 & mean_wind_dir_8h < 337.5 ~ "NW"
-      ),
-    wind_dir_8h_NS = ifelse(mean_wind_dir_8h > 90 & mean_wind_dir_8h <= 270, "S", "N"),
-    wind_S_8h = ifelse(wind_dir_8h_NS == "S", mean_wind_vel_8h, 0),
-    wind_N_8h = ifelse(wind_dir_8h_NS == "N", mean_wind_vel_8h, 0),
-    wind_dir_1d_class = case_when(
-      mean_wind_dir_1d < 22.5 & mean_wind_dir_1d >= 337.5 ~ "N",
-      mean_wind_dir_1d >= 22.5 & mean_wind_dir_1d < 67.5 ~ "NE",
-      mean_wind_dir_1d >= 67.5 & mean_wind_dir_1d < 112.5 ~ "E",
-      mean_wind_dir_1d >= 112.5 & mean_wind_dir_1d < 157.5 ~ "SE",
-      mean_wind_dir_1d >= 157.5 & mean_wind_dir_1d < 202.5 ~ "S",
-      mean_wind_dir_1d >= 202.5 & mean_wind_dir_1d < 247.5 ~ "SW",
-      mean_wind_dir_1d >= 247.5 & mean_wind_dir_1d < 292.5 ~ "W",
-      mean_wind_dir_1d >= 292.5 & mean_wind_dir_1d < 337.5 ~ "NW"
-    ),
-    wind_dir_1d_NS = ifelse(mean_wind_dir_1d > 90 & mean_wind_dir_1d <= 270, "S", "N"),
-    wind_S_1d = ifelse(wind_dir_1d_NS == "S", mean_wind_vel_1d, 0),
-    wind_N_1d = ifelse(wind_dir_1d_NS == "N", mean_wind_vel_1d, 0),
-    wind_dir_3d_class = case_when(
-      mean_wind_dir_3d < 22.5 & mean_wind_dir_3d >= 337.5 ~ "N",
-      mean_wind_dir_3d >= 22.5 & mean_wind_dir_3d < 67.5 ~ "NE",
-      mean_wind_dir_3d >= 67.5 & mean_wind_dir_3d < 112.5 ~ "E",
-      mean_wind_dir_3d >= 112.5 & mean_wind_dir_3d < 157.5 ~ "SE",
-      mean_wind_dir_3d >= 157.5 & mean_wind_dir_3d < 202.5 ~ "S",
-      mean_wind_dir_3d >= 202.5 & mean_wind_dir_3d < 247.5 ~ "SW",
-      mean_wind_dir_3d >= 247.5 & mean_wind_dir_3d < 292.5 ~ "W",
-      mean_wind_dir_3d >= 292.5 & mean_wind_dir_3d < 337.5 ~ "NW"
-    ),
-    wind_dir_3d_NS = ifelse(mean_wind_dir_3d > 90 & mean_wind_dir_3d <= 270, "S", "N"),
-    wind_S_3d = ifelse(wind_dir_3d_NS == "S", mean_wind_vel_3d, 0),
-    wind_N_3d = ifelse(wind_dir_3d_NS == "N", mean_wind_vel_3d, 0),
-    wind_dir_5d_class = case_when(
-      mean_wind_dir_5d < 22.5 & mean_wind_dir_5d >= 337.5 ~ "N",
-      mean_wind_dir_5d >= 22.5 & mean_wind_dir_5d < 67.5 ~ "NE",
-      mean_wind_dir_5d >= 67.5 & mean_wind_dir_5d < 112.5 ~ "E",
-      mean_wind_dir_5d >= 112.5 & mean_wind_dir_5d < 157.5 ~ "SE",
-      mean_wind_dir_5d >= 157.5 & mean_wind_dir_5d < 202.5 ~ "S",
-      mean_wind_dir_5d >= 202.5 & mean_wind_dir_5d < 247.5 ~ "SW",
-      mean_wind_dir_5d >= 247.5 & mean_wind_dir_5d < 292.5 ~ "W",
-      mean_wind_dir_5d >= 292.5 & mean_wind_dir_5d < 337.5 ~ "NW"
-    ),
-    wind_dir_5d_NS = ifelse(mean_wind_dir_5d > 90 & mean_wind_dir_5d <= 270, "S", "N"),
-    wind_S_5d = ifelse(wind_dir_5d_NS == "S", mean_wind_vel_5d, 0),
-    wind_N_5d = ifelse(wind_dir_5d_NS == "N", mean_wind_vel_5d, 0))
+    wind_dir_8h_class = classify_wind_dir(wind_dir_8h),
+    wind_dir_8h_NS = ifelse(wind_dir_8h > 90 & wind_dir_8h <= 270, "S", "N"),
+    wind_S_8h = ifelse(wind_dir_8h_NS == "S", wind_vel_8h, 0),
+    wind_N_8h = ifelse(wind_dir_8h_NS == "N", wind_vel_8h, 0),
+    
+    wind_dir_1d_class = classify_wind_dir(wind_dir_1d),
+    wind_dir_1d_NS = ifelse(wind_dir_1d > 90 & wind_dir_1d <= 270, "S", "N"),
+    wind_S_1d = ifelse(wind_dir_1d_NS == "S", wind_vel_1d, 0),
+    wind_N_1d = ifelse(wind_dir_1d_NS == "N", wind_vel_1d, 0),
+    
+    wind_dir_3d_class = classify_wind_dir(wind_dir_3d),
+    wind_dir_3d_NS = ifelse(wind_dir_3d > 90 & wind_dir_3d <= 270, "S", "N"),
+    wind_S_3d = ifelse(wind_dir_3d_NS == "S", wind_vel_3d, 0),
+    wind_N_3d = ifelse(wind_dir_3d_NS == "N", wind_vel_3d, 0),
+    
+    wind_dir_5d_class = classify_wind_dir(wind_dir_5d),
+    wind_dir_5d_NS = ifelse(wind_dir_5d > 90 & wind_dir_5d <= 270, "S", "N"),
+    wind_S_5d = ifelse(wind_dir_5d_NS == "S", wind_vel_5d, 0),
+    wind_N_5d = ifelse(wind_dir_5d_NS == "N", wind_vel_5d, 0)) |>
+  # Classify lake wind
+  mutate(
+    wind_dir_lake_8h_class = classify_wind_dir(wind_dir_lake_8h),
+    wind_dir_lake_8h_NS = ifelse(wind_dir_lake_8h > 90 & wind_dir_lake_8h <= 270, "S", "N"),
+    wind_S_lake_8h = ifelse(wind_dir_lake_8h_NS == "S", wind_vel_lake_8h, 0),
+    wind_N_lake_8h = ifelse(wind_dir_lake_8h_NS == "N", wind_vel_lake_8h, 0),
+    wind_dir_lake_1d_class = classify_wind_dir(wind_dir_lake_1d),
+    wind_dir_lake_1d_NS = ifelse(wind_dir_lake_1d > 90 & wind_dir_lake_1d <= 270, "S", "N"),
+    wind_S_lake_1d = ifelse(wind_dir_lake_1d_NS == "S", wind_vel_lake_1d, 0),
+    wind_N_lake_1d = ifelse(wind_dir_lake_1d_NS == "N", wind_vel_lake_1d, 0),
+    wind_dir_lake_3d_class = classify_wind_dir(wind_dir_lake_3d),
+    wind_dir_lake_3d_NS = ifelse(wind_dir_lake_3d > 90 & wind_dir_lake_3d <= 270, "S", "N"),
+    wind_S_lake_3d = ifelse(wind_dir_lake_3d_NS == "S", wind_vel_lake_3d, 0),
+    wind_N_lake_3d = ifelse(wind_dir_lake_3d_NS == "N", wind_vel_lake_3d, 0),
+    wind_dir_lake_5d_class = classify_wind_dir(wind_dir_lake_5d),
+    wind_dir_lake_5d_NS = ifelse(wind_dir_lake_5d > 90 & wind_dir_lake_5d <= 270, "S", "N"),
+    wind_S_lake_5d = ifelse(wind_dir_lake_5d_NS == "S", wind_vel_lake_5d, 0),
+    wind_N_lake_5d = ifelse(wind_dir_lake_5d_NS == "N", wind_vel_lake_5d, 0)
+  ) 
 ```
 
 # Aggregate the meteodata to daily daytime data
@@ -333,76 +366,58 @@ MeteoCH_data_night <- MeteoCH_data_night |>
 MeteoCH_data_day <- MeteoCH_data_hourly |>
   filter(hour(time) > 6 & hour(time) <= 22) |>
   group_by(date = as.Date(time)) |>
-  select(-air_temp, -precip, -humidity, -rad, -pressure, -wind_vel, -wind_dir, -water_temp, -water_temp_surface,
-         -mean_air_temp_8h, -sum_precip_8h, -mean_humidity_8h, -mean_rad_8h, -mean_pressure_8h, -mean_wind_vel_8h,
-         -mean_wind_dir_8h, -mean_water_temp_8h, -mean_water_temp_surface_8h) |>
+  select(-air_temp, -precip, -humidity, -rad, -pressure, 
+         -wind_vel, -wind_dir, -water_temp, -water_temp_surface, -wind_dir_lake, -wind_vel_lake,
+         -air_temp_8h, -precip_8h, -humidity_8h, -rad_8h, -pressure_8h, 
+         -wind_vel_8h, -wind_dir_8h, -water_temp_8h, -water_temp_surface_8h, -wind_dir_lake_8h, -wind_vel_lake_8h) |>
   # summarize all variables by taking the value of the last hour (i.e. hour(time = 22))
   slice_max(order_by = time, n = 1) |>
   ungroup() |>
   mutate(daynight = as.factor("d")) |>
   # Classify precipitation
   mutate(
-    precip_16h_boolean = ifelse(sum_precip_16h > 0.3, 1, 0),
-    precip_1d_boolean = ifelse(sum_precip_1d > 0.3, 1, 0),
-    precip_3d_boolean = ifelse(sum_precip_3d > 0.3, 1, 0),
-    precip_5d_boolean = ifelse(sum_precip_5d > 0.3, 1, 0)
+    precip_16h_boolean = ifelse(precip_16h > 0.3, 1, 0),
+    precip_1d_boolean = ifelse(precip_1d > 0.3, 1, 0),
+    precip_3d_boolean = ifelse(precip_3d > 0.3, 1, 0),
+    precip_5d_boolean = ifelse(precip_5d > 0.3, 1, 0)
   ) |>
   # Classify wind
   mutate(
-    wind_dir_16h_class = case_when(
-      mean_wind_dir_16h < 22.5 | mean_wind_dir_16h >= 337.5 ~ "N",
-      mean_wind_dir_16h >= 22.5 & mean_wind_dir_16h < 67.5 ~ "NE",
-      mean_wind_dir_16h >= 67.5 & mean_wind_dir_16h < 112.5 ~ "E",
-      mean_wind_dir_16h >= 112.5 & mean_wind_dir_16h < 157.5 ~ "SE",
-      mean_wind_dir_16h >= 157.5 & mean_wind_dir_16h < 202.5 ~ "S",
-      mean_wind_dir_16h >= 202.5 & mean_wind_dir_16h < 247.5 ~ "SW",
-      mean_wind_dir_16h >= 247.5 & mean_wind_dir_16h < 292.5 ~ "W",
-      mean_wind_dir_16h >= 292.5 & mean_wind_dir_16h < 337.5 ~ "NW"
-    ),
-    wind_dir_16h_NS = ifelse(mean_wind_dir_16h > 90 & mean_wind_dir_16h <= 270, "S", "N"),
-    wind_S_16h = ifelse(wind_dir_16h_NS == "S", mean_wind_vel_16h, 0),
-    wind_N_16h = ifelse(wind_dir_16h_NS == "N", mean_wind_vel_16h, 0),
-    wind_dir_1d_class = case_when(
-      mean_wind_dir_1d < 22.5 | mean_wind_dir_1d >= 337.5 ~ "N",
-      mean_wind_dir_1d >= 22.5 & mean_wind_dir_1d < 67.5 ~ "NE",
-      mean_wind_dir_1d >= 67.5 & mean_wind_dir_1d < 112.5 ~ "E",
-      mean_wind_dir_1d >= 112.5 & mean_wind_dir_1d < 157.5 ~ "SE",
-      mean_wind_dir_1d >= 157.5 & mean_wind_dir_1d < 202.5 ~ "S",
-      mean_wind_dir_1d >= 202.5 & mean_wind_dir_1d < 247.5 ~ "SW",
-      mean_wind_dir_1d >= 247.5 & mean_wind_dir_1d < 292.5 ~ "W",
-      mean_wind_dir_1d >= 292.5 & mean_wind_dir_1d < 337.5 ~ "NW"
-    ),
-    wind_dir_1d_NS = ifelse(mean_wind_dir_1d > 90 & mean_wind_dir_1d <= 270, "S", "N"),
-    wind_S_1d = ifelse(wind_dir_1d_NS == "S", mean_wind_vel_1d, 0),
-    wind_N_1d = ifelse(wind_dir_1d_NS == "N", mean_wind_vel_1d, 0),
-    
-    wind_dir_3d_class = case_when(
-      mean_wind_dir_3d < 22.5 | mean_wind_dir_3d >= 337.5 ~ "N",
-      mean_wind_dir_3d >= 22.5 & mean_wind_dir_3d < 67.5 ~ "NE",
-      mean_wind_dir_3d >= 67.5 & mean_wind_dir_3d < 112.5 ~ "E",
-      mean_wind_dir_3d >= 112.5 & mean_wind_dir_3d < 157.5 ~ "SE",
-      mean_wind_dir_3d >= 157.5 & mean_wind_dir_3d < 202.5 ~ "S",
-      mean_wind_dir_3d >= 202.5 & mean_wind_dir_3d < 247.5 ~ "SW",
-      mean_wind_dir_3d >= 247.5 & mean_wind_dir_3d < 292.5 ~ "W",
-      mean_wind_dir_3d >= 292.5 & mean_wind_dir_3d < 337.5 ~ "NW"
-    ),
-    wind_dir_3d_NS = ifelse(mean_wind_dir_3d > 90 & mean_wind_dir_3d <= 270, "S", "N"),
-    wind_S_3d = ifelse(wind_dir_3d_NS == "S", mean_wind_vel_3d, 0),
-    wind_N_3d = ifelse(wind_dir_3d_NS == "N", mean_wind_vel_3d, 0),
-    
-    wind_dir_5d_class = case_when(
-      mean_wind_dir_5d < 22.5 | mean_wind_dir_5d >= 337.5 ~ "N",
-      mean_wind_dir_5d >= 22.5 & mean_wind_dir_5d < 67.5 ~ "NE",
-      mean_wind_dir_5d >= 67.5 & mean_wind_dir_5d < 112.5 ~ "E",
-      mean_wind_dir_5d >= 112.5 & mean_wind_dir_5d < 157.5 ~ "SE",
-      mean_wind_dir_5d >= 157.5 & mean_wind_dir_5d < 202.5 ~ "S",
-      mean_wind_dir_5d >= 202.5 & mean_wind_dir_5d < 247.5 ~ "SW",
-      mean_wind_dir_5d >= 247.5 & mean_wind_dir_5d < 292.5 ~ "W",
-      mean_wind_dir_5d >= 292.5 & mean_wind_dir_5d < 337.5 ~ "NW"
-    ),
-    wind_dir_5d_NS = ifelse(mean_wind_dir_5d > 90 & mean_wind_dir_5d <= 270, "S", "N"),
-    wind_S_5d = ifelse(wind_dir_5d_NS == "S", mean_wind_vel_5d, 0),
-    wind_N_5d = ifelse(wind_dir_5d_NS == "N", mean_wind_vel_5d, 0)
+    wind_dir_16h_class = classify_wind_dir(wind_dir_16h),
+    wind_dir_16h_NS = ifelse(wind_dir_16h > 90 & wind_dir_16h <= 270, "S", "N"),
+    wind_S_16h = ifelse(wind_dir_16h_NS == "S", wind_vel_16h, 0),
+    wind_N_16h = ifelse(wind_dir_16h_NS == "N", wind_vel_16h, 0),
+    wind_dir_1d_class = classify_wind_dir(wind_dir_1d),
+    wind_dir_1d_NS = ifelse(wind_dir_1d > 90 & wind_dir_1d <= 270, "S", "N"),
+    wind_S_1d = ifelse(wind_dir_1d_NS == "S", wind_vel_1d, 0),
+    wind_N_1d = ifelse(wind_dir_1d_NS == "N", wind_vel_1d, 0),
+    wind_dir_3d_class = classify_wind_dir(wind_dir_3d),
+    wind_dir_3d_NS = ifelse(wind_dir_3d > 90 & wind_dir_3d <= 270, "S", "N"),
+    wind_S_3d = ifelse(wind_dir_3d_NS == "S", wind_vel_3d, 0),
+    wind_N_3d = ifelse(wind_dir_3d_NS == "N", wind_vel_3d, 0),
+    wind_dir_5d_class = classify_wind_dir(wind_dir_5d),
+    wind_dir_5d_NS = ifelse(wind_dir_5d > 90 & wind_dir_5d <= 270, "S", "N"),
+    wind_S_5d = ifelse(wind_dir_5d_NS == "S", wind_vel_5d, 0),
+    wind_N_5d = ifelse(wind_dir_5d_NS == "N", wind_vel_5d, 0)
+  ) |>
+  # Classify lake wind
+  mutate(
+    wind_dir_lake_16h_class = classify_wind_dir(wind_dir_lake_16h),
+    wind_dir_lake_16h_NS = ifelse(wind_dir_lake_16h > 90 & wind_dir_lake_16h <= 270, "S", "N"),
+    wind_S_lake_16h = ifelse(wind_dir_lake_16h_NS == "S", wind_vel_lake_16h, 0),
+    wind_N_lake_16h = ifelse(wind_dir_lake_16h_NS == "N", wind_vel_lake_16h, 0),
+    wind_dir_lake_1d_class = classify_wind_dir(wind_dir_lake_1d),
+    wind_dir_lake_1d_NS = ifelse(wind_dir_lake_1d > 90 & wind_dir_lake_1d <= 270, "S", "N"),
+    wind_S_lake_1d = ifelse(wind_dir_lake_1d_NS == "S", wind_vel_lake_1d, 0),
+    wind_N_lake_1d = ifelse(wind_dir_lake_1d_NS == "N", wind_vel_lake_1d, 0),
+    wind_dir_lake_3d_class = classify_wind_dir(wind_dir_lake_3d),
+    wind_dir_lake_3d_NS = ifelse(wind_dir_lake_3d > 90 & wind_dir_lake_3d <= 270, "S", "N"),
+    wind_S_lake_3d = ifelse(wind_dir_lake_3d_NS == "S", wind_vel_lake_3d, 0),
+    wind_N_lake_3d = ifelse(wind_dir_lake_3d_NS == "N", wind_vel_lake_3d, 0),
+    wind_dir_lake_5d_class = classify_wind_dir(wind_dir_lake_5d),
+    wind_dir_lake_5d_NS = ifelse(wind_dir_lake_5d > 90 & wind_dir_lake_5d <= 270, "S", "N"),
+    wind_S_lake_5d = ifelse(wind_dir_lake_5d_NS == "S", wind_vel_lake_5d, 0),
+    wind_N_lake_5d = ifelse(wind_dir_lake_5d_NS == "N", wind_vel_lake_5d, 0)
   )
 
 ```
@@ -442,8 +457,8 @@ all_data_daily <- Thun_Network_data_daily |>
   left_join(meta, by = "Log_NR") |>
   left_join(MeteoCH_data_daily, by = "time") |>
   select(-X, -HuM, -ID) |>
-  mutate(UHI_day = air_temp_LCD_day - mean_air_temp,
-         UHI_night = air_temp_LCD_night - mean_air_temp,
+  mutate(UHI_day = air_temp_LCD_day - air_temp,
+         UHI_night = air_temp_LCD_night - air_temp,
          UHI = ifelse(daynight == "d", UHI_day, UHI_night))
 
 
@@ -452,6 +467,8 @@ write.csv(all_data_daily, "../data/final_predictors/all_data_daily.csv")
 ```
 
 
+
+## DELETE?
 Create files with only the predictors
 ```{r}
 predictors_hourly <- all_data_hourly |>
@@ -462,5 +479,3 @@ predictors_daily_night <- all_data_daily_night |>
   select(-X, -T_mean, -T_min, -T_max, -HI_mean, -H_mean, -H_max, -H_min, -UHI_min, -UHI_max, -HI_min, -HI_max, -Location, -HuM, -LCZ_mixed, -LCZ, -LU_3, -LU_7, -ID, -valid_hours, -UHI_mean, -valid_hours_night, -valid_hours_day, -T_min_night, -Tropical_night, -Gfroerli_night, -T_mean_night, -T_mean_day, -T_max_day, -Summer_day, -Hot_day, -Very_hot_day, -UHI_day)
 write.csv(predictors_daily_night, "../data/final_predictors/predictors_daily_night.csv")
 ```
-
-
