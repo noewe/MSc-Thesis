@@ -250,12 +250,12 @@ source("../R/roll_mean_wind_dir.R")
 # Aggregate the meteodata to daily nighttime data
 ```{r}
 MeteoCH_data_night <- MeteoCH_data_hourly |>
-  filter(hour(time) >= 22 | hour(time) <= 6) |>
+  filter(hour(time) > 22 | hour(time) <= 6) |>
   # shift time 7h back
   mutate(time = time - hours(7)) |>
   group_by(date = as.Date(time)) |>
   select(-air_temp, -precip, -humidity, -rad, -pressure, -wind_vel, -wind_dir, -water_temp, -water_temp_surface,
-         -mean_air_temp_16h, -sum_precip_16h, -mean_humidity_16h, -mean_rad_16h, -mean_pressure_16h, -mean_wind_vel_16h, mean_wind_dir_16h,
+         -mean_air_temp_16h, -sum_precip_16h, -mean_humidity_16h, -mean_rad_16h, -mean_pressure_16h, -mean_wind_vel_16h, -mean_wind_dir_16h,
          -mean_water_temp_16h, -mean_water_temp_surface_16h) |>
   # summarize all variables by taking the value of the last hour (i.e. hour(time = 23))
   slice_max(order_by = time, n = 1) |>
@@ -282,9 +282,11 @@ MeteoCH_data_night <- MeteoCH_data_night |>
       mean_wind_dir_8h >= 157.5 & mean_wind_dir_8h < 202.5 ~ "S",
       mean_wind_dir_8h >= 202.5 & mean_wind_dir_8h < 247.5 ~ "SW",
       mean_wind_dir_8h >= 247.5 & mean_wind_dir_8h < 292.5 ~ "W",
-      mean_wind_dir_8h >= 292.5 & mean_wind_dir_8h < 337.5 ~ "NW"),
+      mean_wind_dir_8h >= 292.5 & mean_wind_dir_8h < 337.5 ~ "NW"
+      ),
     wind_dir_8h_NS = ifelse(mean_wind_dir_8h > 90 & mean_wind_dir_8h <= 270, "S", "N"),
-    wind_S_8h = ifelse(wind_dir_8h_NS == "S", 1, 0),
+    wind_S_8h = ifelse(wind_dir_8h_NS == "S", mean_wind_vel_8h, 0),
+    wind_N_8h = ifelse(wind_dir_8h_NS == "N", mean_wind_vel_8h, 0),
     wind_dir_1d_class = case_when(
       mean_wind_dir_1d < 22.5 & mean_wind_dir_1d >= 337.5 ~ "N",
       mean_wind_dir_1d >= 22.5 & mean_wind_dir_1d < 67.5 ~ "NE",
@@ -296,7 +298,8 @@ MeteoCH_data_night <- MeteoCH_data_night |>
       mean_wind_dir_1d >= 292.5 & mean_wind_dir_1d < 337.5 ~ "NW"
     ),
     wind_dir_1d_NS = ifelse(mean_wind_dir_1d > 90 & mean_wind_dir_1d <= 270, "S", "N"),
-    wind_S_1d = ifelse(wind_dir_1d_NS == "S", 1, 0),
+    wind_S_1d = ifelse(wind_dir_1d_NS == "S", mean_wind_vel_1d, 0),
+    wind_N_1d = ifelse(wind_dir_1d_NS == "N", mean_wind_vel_1d, 0),
     wind_dir_3d_class = case_when(
       mean_wind_dir_3d < 22.5 & mean_wind_dir_3d >= 337.5 ~ "N",
       mean_wind_dir_3d >= 22.5 & mean_wind_dir_3d < 67.5 ~ "NE",
@@ -308,7 +311,8 @@ MeteoCH_data_night <- MeteoCH_data_night |>
       mean_wind_dir_3d >= 292.5 & mean_wind_dir_3d < 337.5 ~ "NW"
     ),
     wind_dir_3d_NS = ifelse(mean_wind_dir_3d > 90 & mean_wind_dir_3d <= 270, "S", "N"),
-    wind_S_3d = ifelse(wind_dir_3d_NS == "S", 1, 0),
+    wind_S_3d = ifelse(wind_dir_3d_NS == "S", mean_wind_vel_3d, 0),
+    wind_N_3d = ifelse(wind_dir_3d_NS == "N", mean_wind_vel_3d, 0),
     wind_dir_5d_class = case_when(
       mean_wind_dir_5d < 22.5 & mean_wind_dir_5d >= 337.5 ~ "N",
       mean_wind_dir_5d >= 22.5 & mean_wind_dir_5d < 67.5 ~ "NE",
@@ -320,15 +324,88 @@ MeteoCH_data_night <- MeteoCH_data_night |>
       mean_wind_dir_5d >= 292.5 & mean_wind_dir_5d < 337.5 ~ "NW"
     ),
     wind_dir_5d_NS = ifelse(mean_wind_dir_5d > 90 & mean_wind_dir_5d <= 270, "S", "N"),
-    wind_S_5d = ifelse(wind_dir_5d_NS == "S", 1, 0)) |>
-  mutate()
-    
-
-
-
-
+    wind_S_5d = ifelse(wind_dir_5d_NS == "S", mean_wind_vel_5d, 0),
+    wind_N_5d = ifelse(wind_dir_5d_NS == "N", mean_wind_vel_5d, 0))
 ```
 
+# Aggregate the meteodata to daily daytime data
+```{r}
+MeteoCH_data_day <- MeteoCH_data_hourly |>
+  filter(hour(time) > 6 & hour(time) <= 22) |>
+  group_by(date = as.Date(time)) |>
+  select(-air_temp, -precip, -humidity, -rad, -pressure, -wind_vel, -wind_dir, -water_temp, -water_temp_surface,
+         -mean_air_temp_8h, -sum_precip_8h, -mean_humidity_8h, -mean_rad_8h, -mean_pressure_8h, -mean_wind_vel_8h,
+         -mean_wind_dir_8h, -mean_water_temp_8h, -mean_water_temp_surface_8h) |>
+  # summarize all variables by taking the value of the last hour (i.e. hour(time = 22))
+  slice_max(order_by = time, n = 1) |>
+  ungroup() |>
+  mutate(daynight = as.factor("d")) |>
+  # Classify precipitation
+  mutate(
+    precip_16h_boolean = ifelse(sum_precip_16h > 0.3, 1, 0),
+    precip_1d_boolean = ifelse(sum_precip_1d > 0.3, 1, 0),
+    precip_3d_boolean = ifelse(sum_precip_3d > 0.3, 1, 0),
+    precip_5d_boolean = ifelse(sum_precip_5d > 0.3, 1, 0)
+  ) |>
+  # Classify wind
+  mutate(
+    wind_dir_16h_class = case_when(
+      mean_wind_dir_16h < 22.5 | mean_wind_dir_16h >= 337.5 ~ "N",
+      mean_wind_dir_16h >= 22.5 & mean_wind_dir_16h < 67.5 ~ "NE",
+      mean_wind_dir_16h >= 67.5 & mean_wind_dir_16h < 112.5 ~ "E",
+      mean_wind_dir_16h >= 112.5 & mean_wind_dir_16h < 157.5 ~ "SE",
+      mean_wind_dir_16h >= 157.5 & mean_wind_dir_16h < 202.5 ~ "S",
+      mean_wind_dir_16h >= 202.5 & mean_wind_dir_16h < 247.5 ~ "SW",
+      mean_wind_dir_16h >= 247.5 & mean_wind_dir_16h < 292.5 ~ "W",
+      mean_wind_dir_16h >= 292.5 & mean_wind_dir_16h < 337.5 ~ "NW"
+    ),
+    wind_dir_16h_NS = ifelse(mean_wind_dir_16h > 90 & mean_wind_dir_16h <= 270, "S", "N"),
+    wind_S_16h = ifelse(wind_dir_16h_NS == "S", mean_wind_vel_16h, 0),
+    wind_N_16h = ifelse(wind_dir_16h_NS == "N", mean_wind_vel_16h, 0),
+    wind_dir_1d_class = case_when(
+      mean_wind_dir_1d < 22.5 | mean_wind_dir_1d >= 337.5 ~ "N",
+      mean_wind_dir_1d >= 22.5 & mean_wind_dir_1d < 67.5 ~ "NE",
+      mean_wind_dir_1d >= 67.5 & mean_wind_dir_1d < 112.5 ~ "E",
+      mean_wind_dir_1d >= 112.5 & mean_wind_dir_1d < 157.5 ~ "SE",
+      mean_wind_dir_1d >= 157.5 & mean_wind_dir_1d < 202.5 ~ "S",
+      mean_wind_dir_1d >= 202.5 & mean_wind_dir_1d < 247.5 ~ "SW",
+      mean_wind_dir_1d >= 247.5 & mean_wind_dir_1d < 292.5 ~ "W",
+      mean_wind_dir_1d >= 292.5 & mean_wind_dir_1d < 337.5 ~ "NW"
+    ),
+    wind_dir_1d_NS = ifelse(mean_wind_dir_1d > 90 & mean_wind_dir_1d <= 270, "S", "N"),
+    wind_S_1d = ifelse(wind_dir_1d_NS == "S", mean_wind_vel_1d, 0),
+    wind_N_1d = ifelse(wind_dir_1d_NS == "N", mean_wind_vel_1d, 0),
+    
+    wind_dir_3d_class = case_when(
+      mean_wind_dir_3d < 22.5 | mean_wind_dir_3d >= 337.5 ~ "N",
+      mean_wind_dir_3d >= 22.5 & mean_wind_dir_3d < 67.5 ~ "NE",
+      mean_wind_dir_3d >= 67.5 & mean_wind_dir_3d < 112.5 ~ "E",
+      mean_wind_dir_3d >= 112.5 & mean_wind_dir_3d < 157.5 ~ "SE",
+      mean_wind_dir_3d >= 157.5 & mean_wind_dir_3d < 202.5 ~ "S",
+      mean_wind_dir_3d >= 202.5 & mean_wind_dir_3d < 247.5 ~ "SW",
+      mean_wind_dir_3d >= 247.5 & mean_wind_dir_3d < 292.5 ~ "W",
+      mean_wind_dir_3d >= 292.5 & mean_wind_dir_3d < 337.5 ~ "NW"
+    ),
+    wind_dir_3d_NS = ifelse(mean_wind_dir_3d > 90 & mean_wind_dir_3d <= 270, "S", "N"),
+    wind_S_3d = ifelse(wind_dir_3d_NS == "S", mean_wind_vel_3d, 0),
+    wind_N_3d = ifelse(wind_dir_3d_NS == "N", mean_wind_vel_3d, 0),
+    
+    wind_dir_5d_class = case_when(
+      mean_wind_dir_5d < 22.5 | mean_wind_dir_5d >= 337.5 ~ "N",
+      mean_wind_dir_5d >= 22.5 & mean_wind_dir_5d < 67.5 ~ "NE",
+      mean_wind_dir_5d >= 67.5 & mean_wind_dir_5d < 112.5 ~ "E",
+      mean_wind_dir_5d >= 112.5 & mean_wind_dir_5d < 157.5 ~ "SE",
+      mean_wind_dir_5d >= 157.5 & mean_wind_dir_5d < 202.5 ~ "S",
+      mean_wind_dir_5d >= 202.5 & mean_wind_dir_5d < 247.5 ~ "SW",
+      mean_wind_dir_5d >= 247.5 & mean_wind_dir_5d < 292.5 ~ "W",
+      mean_wind_dir_5d >= 292.5 & mean_wind_dir_5d < 337.5 ~ "NW"
+    ),
+    wind_dir_5d_NS = ifelse(mean_wind_dir_5d > 90 & mean_wind_dir_5d <= 270, "S", "N"),
+    wind_S_5d = ifelse(wind_dir_5d_NS == "S", mean_wind_vel_5d, 0),
+    wind_N_5d = ifelse(wind_dir_5d_NS == "N", mean_wind_vel_5d, 0)
+  )
+
+```
 
 
 # Join the hourly Thun network data with the other Meteo data
@@ -344,92 +421,36 @@ all_data_hourly <- Thun_Network_data_hourly |>
 write.csv(all_data_hourly, "../data/final_predictors/all_data_hourly.csv")
 ```
 
-
-# Aggregate the meteodata to daily nighttime data
+# Join the half-daily data
 ```{r}
-MeteoCH_data_daily_night <- MeteoCH_data_hourly |>
-  filter(hour(time) >= 22 | hour(time) <= 6) |>
-  # shift time 7h back
-  mutate(time = time - hours(7)) |>
-  group_by(date = as.Date(time)) |>
-  summarise(air_temp = mean(air_temp, na.rm = TRUE),
-            precip = sum(precip, na.rm = TRUE),
-            precip_boolean = ifelse(precip > 0.3, 1, 0),
-            RH_2m = mean(RH_2m_h, na.rm = TRUE),
-            #glob_rad = mean(glob_rad_h, na.rm = TRUE),
-            airpress = mean(airpress_h, na.rm = TRUE),
-            CAP9 = first(CAP9),
-            CAP18 = first(CAP18),
-            CAP27 = first(CAP27),
-            GWT8_Z500 = first(GWT8_Z500),
-            GWT10_SLP = first(GWT10_SLP),
-            GWT10_Z500 = first(GWT10_Z500),
-            GWT18_SLP = first(GWT18_SLP),
-            GWT18_Z500 = first(GWT18_Z500),
-            GWT26_SLP = first(GWT26_SLP),
-            GWT26_Z500 = first(GWT26_Z500)) |>
-  ungroup()
+# Clean column names in both data frames
+MeteoCH_data_day <- MeteoCH_data_day |>
+  rename_with(~ str_replace_all(., "_16h", ""))
 
-# Daily global radiation
-glob_rad_daily <- MeteoCH_data_hourly |>
-  # shift time 7h back
-  mutate(time = time - hours(7)) |>
-  select(time, glob_rad_h) |>
-  group_by(date = as.Date(time)) |>
-  summarise(glob_rad = mean(glob_rad_h, na.rm = TRUE))
+MeteoCH_data_night <- MeteoCH_data_night |>
+  rename_with(~ str_replace_all(., "_8h", ""))
 
-# Merge the two dataframes
-MeteoCH_data_daily_night <- full_join(MeteoCH_data_daily_night, glob_rad_daily, by = "date")
+MeteoCH_data_daily <- MeteoCH_data_day |>
+  add_row(MeteoCH_data_night) |>
+  arrange(time) |>
+  select(-wind_dir_h_class, -wind_dir_h_NS, -date)
 
-wind_df <- MeteoCH_data_hourly |>
-  filter(hour(time) >= 22 | hour(time) <= 6) |>
-  # shift time 7h back
-  mutate(time = time - hours(7)) |>
-  select(time, wind_dir_h, wind_vel_h_kmh) |>
-  rename(date = time,
-         wd = wind_dir_h,
-         ws = wind_vel_h_kmh)
+all_data_daily <- Thun_Network_data_daily |>
+  select(time, Log_NR, T_mean_day, T_mean_night) |>
+  rename(air_temp_LCD_night = T_mean_night,
+         air_temp_LCD_day = T_mean_day) |>
+  left_join(meta, by = "Log_NR") |>
+  left_join(MeteoCH_data_daily, by = "time") |>
+  select(-X, -HuM, -ID) |>
+  mutate(UHI_day = air_temp_LCD_day - mean_air_temp,
+         UHI_night = air_temp_LCD_night - mean_air_temp,
+         UHI = ifelse(daynight == "d", UHI_day, UHI_night))
 
-# summarize wind speed and direction using function "openair" package
-wind_df <- timeAverage(wind_df,
-                         avg.time = "day",
-                         statistic = "mean")
-
-# Merge the two dataframes
-MeteoCH_data_daily_night <- full_join(MeteoCH_data_daily_night, wind_df, by = "date") |>
-    mutate(wd_class = case_when(
-              wd < 22.5 & wd >= 337.5 ~ "N",
-              wd >= 22.5 & wd < 67.5 ~ "NE",
-              wd >= 67.5 & wd < 112.5 ~ "E",
-              wd >= 112.5 & wd < 157.5 ~ "SE",
-              wd >= 157.5 & wd < 202.5 ~ "S",
-              wd >= 202.5 & wd < 247.5 ~ "SW",
-              wd >= 247.5 & wd < 292.5 ~ "W",
-              wd >= 292.5 & wd < 337.5 ~ "NW"),
-           wd_NS = ifelse(wd > 90 & wd <= 270, "S", "N"),
-           Wind_S = ifelse(wd_NS == "S", 1, 0)) |>
-  rename(time = date)
 
 # Add Thun Network data
-all_data_daily_night <- full_join(MeteoCH_data_daily_night, Thun_Network_data_daily, by = "time")
-write.csv(all_data_daily_night, "../data/final_predictors/meteo_data_daily_night.csv")
+write.csv(all_data_daily, "../data/final_predictors/all_data_daily.csv")
 ```
 
-```{r}
-# Combine the three dataframes: 10 minute data
-all_data_10min <- full_join(MeteoCH_data_10min, Thun_Network_data, by = "time") |>
-  left_join(meta, by = "Log_NR") |>
-  left_join(Water_data, by = "time") 
-write.csv(all_data_10min, "../data/final_predictors/all_data_10min.csv")
-
-
-
-# daily data night
-all_data_daily_night <- full_join(MeteoCH_data_daily_night, Thun_Network_data_daily, by = "time") |>
-  left_join(meta, by = "Log_NR") |>
-  left_join(Water_data_daily_night, by = "time") 
-write.csv(all_data_daily_night, "../data/final_predictors/all_data_daily_night.csv")
-```
 
 Create files with only the predictors
 ```{r}
@@ -441,433 +462,5 @@ predictors_daily_night <- all_data_daily_night |>
   select(-X, -T_mean, -T_min, -T_max, -HI_mean, -H_mean, -H_max, -H_min, -UHI_min, -UHI_max, -HI_min, -HI_max, -Location, -HuM, -LCZ_mixed, -LCZ, -LU_3, -LU_7, -ID, -valid_hours, -UHI_mean, -valid_hours_night, -valid_hours_day, -T_min_night, -Tropical_night, -Gfroerli_night, -T_mean_night, -T_mean_day, -T_max_day, -Summer_day, -Hot_day, -Very_hot_day, -UHI_day)
 write.csv(predictors_daily_night, "../data/final_predictors/predictors_daily_night.csv")
 ```
-
-
-# Wind data analysis
-First, we look at some wind roses.
-```{r}
-# Wind direction
-MeteoCH_data_wind <- all_data_10min |>
-  select(time, wind_dir_10min, wind_vel_10min_ms, wind_dir_10min_class, wind_dir_10min_NS, UHI, LU_7.type) |>
-  drop_na()
-
-ggwindrose(
-  speed = MeteoCH_data_wind$wind_vel_10min_ms,
-  direction = MeteoCH_data_wind$wind_dir_10min,
-  speed_cuts = c(1, 2, 4, 8, 12),
-  legend_title = "Wind speed (m/s)",
-  calm_wind = 0,
-  n_col = 1,
-  plot_title = "Thun Wind Rose",
-) + labs(
-  subtitle = "May-Oct 2024",
-  caption = "Source: MeteoSwiss"
-)
-ggsave("../figures/Windroses/Wind_Rose_10min_data.png", width = 6, height = 5, dpi = 300)
-
-# Nighttime wind
-MeteoCH_data_wind_night <- MeteoCH_data_wind |>
-  filter(hour(time) >= 22 | hour(time) <= 6)
-
-ggwindrose(
-  speed = MeteoCH_data_wind_night$wind_vel_10min_ms,
-  direction = MeteoCH_data_wind_night$wind_dir_10min,
-  speed_cuts = c(1, 2, 4, 8, 12),
-  legend_title = "Wind speed (m/s)",
-  calm_wind = 0,
-  n_col = 1,
-  plot_title = "Thun Wind Rose NIGHT (22pm-6am)",
-) + labs(
-  subtitle = "May-Oct 2024",
-  caption = "Source: MeteoSwiss"
-)
-ggsave("../figures/Windroses/Wind_Rose_10min_data_night.png", width = 6, height = 5, dpi = 300)
-
-# Daytime wind
-MeteoCH_data_wind_day <- MeteoCH_data_wind |>
-  filter(hour(time) >= 6 & hour(time) <= 22)
-ggwindrose(
-  speed = MeteoCH_data_wind_day$wind_vel_10min_ms,
-  direction = MeteoCH_data_wind_day$wind_dir_10min,
-  speed_cuts = c(1, 2, 4, 8, 12),
-  #speed_cuts = c(1, 2, 3, 5, 12),
-  legend_title = "Wind speed (m/s)",
-  calm_wind = 0,
-  n_col = 1,
-  plot_title = "Thun Wind Rose DAY (6am-10pm)",
-) + labs(
-  subtitle = "May-Oct 2024",
-  caption = "Source: MeteoSwiss"
-)
-ggsave("../figures/Windroses/Wind_Rose_10min_data_day.png", width = 6, height = 5, dpi = 300)
-```
-
-Plot windroses for different UHIs
-```{r}
-# filter for land use
-MeteoCH_data_wind_UHI <- MeteoCH_data_wind |>
-  filter(LU_7.type == "dense urban" | LU_7.type == "green urban" | LU_7.type == "rural") |>
-  group_by(time) |>
-  summarise(wind_dir_10min = mean(wind_dir_10min, na.rm = TRUE),
-            wind_vel_10min_ms = mean(wind_vel_10min_ms, na.rm = TRUE),
-            wind_dir_10min_NS = first(wind_dir_10min_NS),
-            UHI = mean(UHI, na.rm = TRUE),
-            LU_7.type = first(LU_7.type))
-
-# Plot distribution of UHI
-ggplot(MeteoCH_data_wind_UHI, aes(x = UHI)) +
-  geom_histogram(binwidth = 0.5, fill = "blue", color = "black", alpha = 0.7) +
-  labs(title = "Distribution of UHI",
-       x = "UHI",
-       y = "Frequency") +
-  theme_minimal()
-
-MeteoCH_data_wind_UHI_1 <- MeteoCH_data_wind_UHI |>
-  filter(UHI > 1)
-
-# plot the windrose
-ggwindrose(
-  speed = MeteoCH_data_wind_UHI_1$wind_vel_10min_ms,
-  direction = MeteoCH_data_wind_UHI_1$wind_dir_10min,
-  speed_cuts = c(1, 2, 4, 8, 12),
-  legend_title = "Wind speed (m/s)",
-  calm_wind = 0,
-  n_col = 1,
-  plot_title = "Thun Wind Rose UHI > 1",
-) + labs(
-  subtitle = "May-Oct 2024",
-  caption = "Source: MeteoSwiss"
-)
-
-MeteoCH_data_wind_UHI_neg <- MeteoCH_data_wind_UHI |>
-  filter(UHI < 0)
-
-# plot the windrose
-ggwindrose(
-  speed = MeteoCH_data_wind_UHI_neg$wind_vel_10min_ms,
-  direction = MeteoCH_data_wind_UHI_neg$wind_dir_10min,
-  speed_cuts = c(1, 2, 4, 8, 12),
-  legend_title = "Wind speed (m/s)",
-  calm_wind = 0,
-  n_col = 1,
-  plot_title = "Thun Wind Rose UHI < 0",
-) + labs(
-  subtitle = "May-Oct 2024",
-  caption = "Source: MeteoSwiss"
-)
-
-# plot windroses only for nighttime
-MeteoCH_data_wind_UHI_1_night <- MeteoCH_data_wind_UHI_1 |>
-  filter(hour(time) >= 22 | hour(time) <= 6)
-ggwindrose(
-  speed = MeteoCH_data_wind_UHI_1_night$wind_vel_10min_ms,
-  direction = MeteoCH_data_wind_UHI_1_night$wind_dir_10min,
-  speed_cuts = c(1, 2, 4, 8, 12),
-  legend_title = "Wind speed (m/s)",
-  calm_wind = 0,
-  n_col = 1,
-  plot_title = "Thun Wind Rose nightly UHI > 1 (22pm-6am)",
-) + labs(
-  subtitle = "May-Oct 2024",
-  caption = "Source: MeteoSwiss"
-)
-
-MeteoCH_data_wind_UHI_neg_night <- MeteoCH_data_wind_UHI_neg |>
-  filter(hour(time) >= 22 | hour(time) <= 6)
-ggwindrose(
-  speed = MeteoCH_data_wind_UHI_neg_night$wind_vel_10min_ms,
-  direction = MeteoCH_data_wind_UHI_neg_night$wind_dir_10min,
-  speed_cuts = c(1, 2, 4, 8, 12),
-  legend_title = "Wind speed (m/s)",
-  calm_wind = 0,
-  n_col = 1,
-  plot_title = "Thun Wind Rose nightly UHI < 0 (22pm-6am)",
-) + labs(
-  subtitle = "May-Oct 2024",
-  caption = "Source: MeteoSwiss"
-)
-```
-
-
-# Correlate wind speed and direction with UHI
-```{r}
-# Correlate wind speed and direction with UHI
-# symbol of the points should be according to wind_dir_10min_NS
-ggplot(MeteoCH_data_wind_UHI, aes(x = wind_vel_10min_ms, y = UHI, color = wind_dir_10min_NS)) +
-  geom_point(alpha = 0.4) +  # semi-transparent points
-  geom_smooth(method = "lm", se = FALSE) +  # regression lines per group
-  labs(
-    title = "Correlation between Wind Speed and UHI",
-    x = "Wind Speed (m/s)",
-    y = "UHI"
-  ) +
-  theme_minimal() +
-  scale_color_manual(values = c("N" = "blue", "S" = "red"))
-```
-
-Do the whole thing again with hourly data
-```{r}
-# Wind direction
-MeteoCH_data_wind <- all_data_hourly |>
-  select(time, wind_dir_h, wind_vel_h_kmh, wind_dir_h_class, wind_dir_h_NS, UHI_mean, LU_7.type) |>
-  drop_na()
-
-ggwindrose(
-  speed = MeteoCH_data_wind$wind_vel_h_kmh,
-  direction = MeteoCH_data_wind$wind_dir_h,
-  speed_cuts = c(2, 5, 10, 20),
-  legend_title = "Wind speed (km/h)",
-  calm_wind = 0,
-  n_col = 1,
-  plot_title = "Thun Wind Rose",
-) + labs(
-  subtitle = "May-Oct 2024",
-  caption = "Source: MeteoSwiss"
-)
-
-# Nighttime wind
-MeteoCH_data_wind_night <- MeteoCH_data_wind |>
-  filter(hour(time) >= 22 | hour(time) <= 6)
-
-ggwindrose(
-  speed = MeteoCH_data_wind_night$wind_vel_h_kmh,
-  direction = MeteoCH_data_wind_night$wind_dir_h,
-  speed_cuts = c(2, 5, 10, 20),
-  legend_title = "Wind speed (km/h)",
-  calm_wind = 0,
-  n_col = 1,
-  plot_title = "Thun Wind Rose NIGHT (22pm-6am)",
-) + labs(
-  subtitle = "May-Oct 2024",
-  caption = "Source: MeteoSwiss"
-)
-
-# Daytime wind
-MeteoCH_data_wind_day <- MeteoCH_data_wind |>
-  filter(hour(time) >= 6 & hour(time) <= 22)
-ggwindrose(
-  speed = MeteoCH_data_wind_day$wind_vel_h_kmh,
-  direction = MeteoCH_data_wind_day$wind_dir_h,
-  speed_cuts = c(2, 5, 10, 20),
-  legend_title = "Wind speed (km/h)",
-  calm_wind = 0,
-  n_col = 1,
-  plot_title = "Thun Wind Rose DAY (6am-10pm)",
-) + labs(
-  subtitle = "May-Oct 2024",
-  caption = "Source: MeteoSwiss"
-)
-```
-
-
-```{r}
-# filter for land use
-MeteoCH_data_wind_UHI <- MeteoCH_data_wind |>
-  filter(LU_7.type == "dense urban" | LU_7.type == "green urban" | LU_7.type == "rural") |>
-  group_by(time) |>
-  summarise(wind_dir_h = mean(wind_dir_h, na.rm = TRUE),
-            wind_vel_h_kmh = mean(wind_vel_h_kmh, na.rm = TRUE),
-            wind_dir_h_NS = first(wind_dir_h_NS),
-            UHI = mean(UHI_mean, na.rm = TRUE),
-            LU_7.type = first(LU_7.type))
-
-MeteoCH_data_wind_UHI_1 <- MeteoCH_data_wind_UHI |>
-  filter(UHI > 1)
-
-# plot the windrose
-ggwindrose(
-  speed = MeteoCH_data_wind_UHI_1$wind_vel_h_kmh,
-  direction = MeteoCH_data_wind_UHI_1$wind_dir_h,
-  speed_cuts = c(2, 5, 10, 20),
-  legend_title = "Wind speed (km/h)",
-  calm_wind = 0,
-  n_col = 1,
-  plot_title = "Thun Wind Rose UHI > 1",
-) + labs(
-  subtitle = "May-Oct 2024",
-  caption = "Source: MeteoSwiss"
-)
-ggsave("../figures/Windroses/Wind_Rose_UHIover1.png", width = 6, height = 5, dpi = 300)
-
-MeteoCH_data_wind_UHI_neg <- MeteoCH_data_wind_UHI |>
-  filter(UHI < 0)
-
-# plot the windrose
-ggwindrose(
-  speed = MeteoCH_data_wind_UHI_neg$wind_vel_h_kmh,
-  direction = MeteoCH_data_wind_UHI_neg$wind_dir_h,
-  speed_cuts = c(2, 5, 10, 20),
-  legend_title = "Wind speed (km/h)",
-  calm_wind = 0,
-  n_col = 1,
-  plot_title = "Thun Wind Rose UHI < 0",
-) + labs(
-  subtitle = "May-Oct 2024",
-  caption = "Source: MeteoSwiss"
-)
-ggsave("../figures/Windroses/Wind_Rose_UHIneg.png", width = 6, height = 5, dpi = 300)
-
-MeteoCH_data_wind_UHI_low <- MeteoCH_data_wind_UHI |>
-  filter(UHI > -0.3 & UHI < 0.3)
-
-# plot the windrose
-ggwindrose(
-  speed = MeteoCH_data_wind_UHI_low$wind_vel_h_kmh,
-  direction = MeteoCH_data_wind_UHI_low$wind_dir_h,
-  speed_cuts = c(2, 5, 10, 20),
-  legend_title = "Wind speed (km/h)",
-  calm_wind = 0,
-  n_col = 1,
-  plot_title = "Thun Wind Rose low UHI (-0.3 < UHI < 0.3) ",
-) + labs(
-  subtitle = "May-Oct 2024",
-  caption = "Source: MeteoSwiss"
-)
-ggsave("../figures/Windroses/Wind_Rose_UHIlow.png", width = 6, height = 5, dpi = 300)
-
-# plot windroses only for nighttime
-MeteoCH_data_wind_UHI_1_night <- MeteoCH_data_wind_UHI_1 |>
-  filter(hour(time) >= 22 | hour(time) <= 6)
-ggwindrose(
-  speed = MeteoCH_data_wind_UHI_1_night$wind_vel_h_kmh,
-  direction = MeteoCH_data_wind_UHI_1_night$wind_dir_h,
-  speed_cuts = c(2, 5, 10, 20, 40),
-  legend_title = "Wind speed (km/h)",
-  calm_wind = 0,
-  n_col = 1,
-  plot_title = "Thun Wind Rose nightly UHI > 1 (22pm-6am)",
-) + labs(
-  subtitle = "May-Oct 2024",
-  caption = "Source: MeteoSwiss"
-)
-ggsave("../figures/Windroses/Wind_Rose_UHIover1_night.png", width = 6, height = 5, dpi = 300)
-
-MeteoCH_data_wind_UHI_neg_night <- MeteoCH_data_wind_UHI_neg |>
-  filter(hour(time) >= 22 | hour(time) <= 6)
-ggwindrose(
-  speed = MeteoCH_data_wind_UHI_neg_night$wind_vel_h_kmh,
-  direction = MeteoCH_data_wind_UHI_neg_night$wind_dir_h,
-  speed_cuts = c(2, 5, 10, 20, 40),
-  legend_title = "Wind speed (km/h)",
-  calm_wind = 0,
-  n_col = 1,
-  plot_title = "Thun Wind Rose nightly UHI < 0 (22pm-6am)",
-) + labs(
-  subtitle = "May-Oct 2024",
-  caption = "Source: MeteoSwiss"
-)
-ggsave("../figures/Windroses/Wind_Rose_UHIneg_night.png", width = 6, height = 5, dpi = 300)
-
-# low UHI during night
-MeteoCH_data_wind_UHI_low_night <- MeteoCH_data_wind_UHI_low |>
-  filter(hour(time) >= 22 | hour(time) <= 6)
-
-ggwindrose(
-  speed = MeteoCH_data_wind_UHI_low_night$wind_vel_h_kmh,
-  direction = MeteoCH_data_wind_UHI_low_night$wind_dir_h,
-  speed_cuts = c(2, 5, 10, 20, 40),
-  legend_title = "Wind speed (km/h)",
-  calm_wind = 0,
-  n_col = 1,
-  plot_title = "Thun Wind Rose nightly low UHI (-0.3 < UHI < 0.3) (22pm-6am)",
-) + labs(
-  subtitle = "May-Oct 2024",
-  caption = "Source: MeteoSwiss"
-)
-ggsave("../figures/Windroses/Wind_Rose_UHIlow_night.png", width = 6, height = 5, dpi = 300)
-```
-
-```{r}
-# Correlate wind speed and direction with UHI
-# symbol of the points should be according to wind_dir_10min_NS
-ggplot(MeteoCH_data_wind_UHI, aes(x = wind_vel_h_kmh, y = UHI, color = wind_dir_h_NS)) +
-  geom_point(alpha = 0.4) +  # semi-transparent points
-  geom_smooth(method = "lm", se = FALSE) +  # regression lines per group
-  labs(
-    title = "Correlation between Wind Speed and UHI",
-    x = "Wind Speed (km/h)",
-    y = "UHI"
-  ) +
-  theme_minimal() +
-  scale_color_manual(values = c("N" = "purple", "S" = "darkcyan"))
-
-# If we cut all above 10 km/h windspeed, the regression is different:
-MeteoCH_data_wind_UHI |>
-  filter(hour(time) >= 22 | hour(time) <= 6) |>
-ggplot( aes(x = wind_vel_h_kmh, y = UHI, color = wind_dir_h_NS)) +
-  geom_point(alpha = 0.4) +  # semi-transparent points
-  geom_smooth(method = "lm", se = FALSE) +  # regression lines per group
-  labs(
-    title = "Correlation between Wind Speed and nighttime UHI",
-    x = "Wind Speed (km/h)",
-    y = "UHI"
-  ) +
-  theme_minimal() +
-  scale_color_manual(values = c("N" = "purple", "S" = "darkcyan"))
-
-MeteoCH_data_wind_UHI |>
-  filter(wind_vel_h_kmh < 10) |>
-  filter(hour(time) >= 22 | hour(time) <= 6) |>
-  ggplot(aes(x = wind_vel_h_kmh, y = UHI, color = wind_dir_h_NS)) +
-  geom_point(alpha = 0.4) +  # semi-transparent points
-  geom_smooth(method = "lm", se = FALSE) +  # regression lines per group
-  labs(
-    title = "Correlation between Wind Speed and nighttime UHI",
-    x = "Wind Speed (km/h)",
-    y = "UHI"
-  ) +
-  theme_minimal() +
-  scale_color_manual(values = c("N" = "purple", "S" = "darkcyan"))
-
-MeteoCH_data_wind_UHI |> # seems like the hours are not really decisive
-  filter(wind_vel_h_kmh < 10) |>
-  filter(hour(time) >= 22 | hour(time) <= 6) |>
-  ggplot(aes(x = wind_vel_h_kmh, y = UHI, color = as.factor(hour(time)))) +
-  geom_point(alpha = 0.4) +  # semi-transparent points
-  geom_smooth(method = "lm", se = FALSE) +  # regression lines per group
-  labs(
-    title = "Correlation between Wind Speed and nighttime UHI",
-    x = "Wind Speed (km/h)",
-    y = "UHI"
-  ) +
-  theme_minimal() +
-  scale_color_manual(values = c("22" = "#ffff55", "23" = "#ffcc00", "0" = "#ffaa11", "1" = "#ff8022", "2" = "#ff6622", "3" = "#ff5044", "4" = "#ee5077", "5" = "#dd4099", "6" = "magenta"))
-```
-
-Plot hourly UHI and wind direction
-```{r}
-p <- ggplot(MeteoCH_data_wind_UHI, aes(x = time, y = UHI)) +
-  geom_line() +  # semi-transparent points
-    # Custom the Y scales:
-  scale_y_continuous(
-    
-    # Features of the first axis
-    name = "UHI",
-    
-    # Add a second axis and specify its features
-    sec.axis = sec_axis( trans=~.*100, name="Wind direction")
-  ) +
-  # add wind direction on secondary y axis
-  geom_point(aes(y = wind_dir_h/100), color = "#4466dd") +
-  labs(
-    title = "UHI and wind direction",
-    x = "time",
-  ) +
-  theme_minimal()
-
-plotly::ggplotly(p) |>
-  layout(yaxis2 = list(overlaying = "y", side = "right", title = "Wind direction"))
-
-```
-
-
-
-
-
-
-
-
-
-
 
 
