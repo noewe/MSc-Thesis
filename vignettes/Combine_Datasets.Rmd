@@ -52,7 +52,10 @@ MeteoCH_data <- MeteoCH_data |>
   )) |>
   mutate(wind_dir_10min_NS = ifelse(wind_dir_10min > 90 & wind_dir_10min <= 270, "S", "N"),
          wind_dir_h_NS = ifelse(wind_dir_h > 90 & wind_dir_h <= 270, "S", "N"),
-         wind_dir_d_NS = ifelse(wind_dir_d > 90 & wind_dir_d <= 270, "S", "N"))
+         wind_dir_d_NS = ifelse(wind_dir_d > 90 & wind_dir_d <= 270, "S", "N"),
+         wind_dir_h_WE= ifelse(wind_dir_h > 0 & wind_dir_h <= 180, "E", "W"),
+         wind_dir_10min_WE= ifelse(wind_dir_10min > 0 & wind_dir_10min <= 180, "E", "W"),
+         wind_dir_d_WE= ifelse(wind_dir_d > 0 & wind_dir_d <= 180, "E", "W"))
 
 write.csv(MeteoCH_data, "../data/IDAWEB/MeteoCH_Thun.csv")
 
@@ -151,11 +154,11 @@ Water_data_hourly <- Water_data_hourly |>
 
 Load the Thun Network data
 ```{r}
-Thun_Network_data <- read.csv("../data/Thun Messnetz 2024/10min_long_2024-05-01_2024-10-30.csv") |>
-  mutate(time = as.POSIXct(time, format = "%Y-%m-%dT%H:%M:%OS", tz="UTC"),
-         timeshift = as.POSIXct(timeshift, format = "%Y-%m-%dT%H:%M:%OS", tz="UTC")) |>
-  mutate(time = with_tz(time, tzone = "Europe/Zurich"),
-         timeshift = with_tz(timeshift, tzone = "Europe/Zurich")) #should start at 2024-05-01 02:00
+# Thun_Network_data <- read.csv("../data/Thun Messnetz 2024/10min_long_2024-05-01_2024-10-30.csv") |>
+#   mutate(time = as.POSIXct(time, format = "%Y-%m-%dT%H:%M:%OS", tz="UTC"),
+#          timeshift = as.POSIXct(timeshift, format = "%Y-%m-%dT%H:%M:%OS", tz="UTC")) |>
+#   mutate(time = with_tz(time, tzone = "Europe/Zurich"),
+#          timeshift = with_tz(timeshift, tzone = "Europe/Zurich")) #should start at 2024-05-01 02:00
 
 Thun_Network_data_hourly <- read.csv("../data/Thun Messnetz 2024/Thun_hourly_summary_2024-05-01_2024-10-30.csv") |>
   mutate(time_hour = as.POSIXct(time_hour, format = "%Y-%m-%dT%H:%M:%OS", tz="UTC")) |>
@@ -203,25 +206,32 @@ strandbad <- strandbad |>
 
 # Aggregate MeteoCH data and add memory/rolling means
 ```{r}
-MeteoCH_data <- read.csv("../data/IDAWEB/MeteoCH_Thun.csv") |>
-  mutate(time = as.POSIXct(time, format="%d.%m.%Y %H:%M", tz = "UTC")) |> 
+MeteoCH_data <- read.csv("../data/IDAWEB/MeteoCH_Thun.csv") 
+  # Enter one value in the column time in the first row: 2024-05-01 02:00
+MeteoCH_data$time[1] <- "2024-05-01 00:00:00"
+
+MeteoCH_data <- MeteoCH_data |>
+  mutate(time = as.POSIXct(time, format="%Y-%m-%d %H:%M", tz = "UTC")) |> 
   mutate(time = with_tz(time, tzone = "Europe/Zurich")) |> #should start at 2024-05-01 02:00
   select(-X.1, -X, -stn)
 
-MeteoCH_data_10min <- MeteoCH_data |>
-  select(time, temp_air_2m_10min, temp_pot_2m_10m, precip_10min, RH_2m_10min, glob_rad_10min, airpress_10min, wind_vel_10min_ms, wind_vel_10min_kmh, wind_dir_10min, wind_dir_10min_class, wind_dir_10min_NS, CAP9, CAP18, CAP27, GWT8_Z500, GWT10_SLP, GWT10_Z500, GWT18_SLP, GWT18_Z500, GWT26_SLP, GWT26_Z500) |>
-  drop_na()
+# MeteoCH_data_10min <- MeteoCH_data |>
+#   select(time, temp_air_2m_10min, temp_pot_2m_10m, precip_10min, RH_2m_10min, glob_rad_10min, airpress_10min, wind_vel_10min_ms, wind_vel_10min_kmh, wind_dir_10min, wind_dir_10min_class, wind_dir_10min_NS, CAP9, CAP18, CAP27, GWT8_Z500, GWT10_SLP, GWT10_Z500, GWT18_SLP, GWT18_Z500, GWT26_SLP, GWT26_Z500) |>
+#   drop_na()
 
 MeteoCH_data_hourly <- MeteoCH_data |>
-  select(time, temp_air_2m_h, precip_last1h, RH_2m_h, glob_rad_h, airpress_h, wind_vel_h_kmh, wind_dir_h, wind_dir_h_class, wind_dir_h_NS, CAP9, CAP18, CAP27, GWT8_Z500, GWT10_SLP, GWT10_Z500, GWT18_SLP, GWT18_Z500, GWT26_SLP, GWT26_Z500) |>
-  drop_na() |>
+  select(time, temp_air_2m_h, precip_last1h, RH_2m_h, glob_rad_h, airpress_h, wind_vel_h_kmh, wind_dir_h, wind_dir_h_class, wind_dir_h_NS, wind_dir_h_WE, CAP9, CAP18, CAP27, GWT8_Z500, GWT10_SLP, GWT10_Z500, GWT18_SLP, GWT18_Z500, GWT26_SLP, GWT26_Z500) |>
+  drop_na() |> # drop rows with 10 min values
   rename(air_temp = temp_air_2m_h,
          pressure = airpress_h,
          wind_vel = wind_vel_h_kmh,
          wind_dir = wind_dir_h,
          rad = glob_rad_h,
          humidity = RH_2m_h,
-         precip = precip_last1h) |>
+         precip = precip_last1h,
+         wind_dir_class = wind_dir_h_class,
+         wind_dir_NS = wind_dir_h_NS,
+         wind_dir_WE = wind_dir_h_WE) |>
   # join with water_temp data
   left_join(Water_data_hourly, by = "time") |>
   left_join(strandbad, by = "time")
@@ -301,7 +311,7 @@ MeteoCH_data_night <- MeteoCH_data_hourly |>
   mutate(time = time - hours(7)) |>
   group_by(date = as.Date(time)) |>
   select(-air_temp, -precip, -humidity, -rad, -pressure, 
-         -wind_vel, -wind_dir, -water_temp, -water_temp_surface, -wind_dir_lake, -wind_vel_lake,
+         -wind_vel, -wind_dir, -water_temp, -water_temp_surface, -wind_dir_lake, -wind_vel_lake, -wind_dir_class, -wind_dir_NS, -wind_dir_WE,
          -air_temp_16h, -precip_16h, -humidity_16h, -rad_16h, -pressure_16h, 
          -wind_vel_16h, -wind_dir_16h, -water_temp_16h, -water_temp_surface_16h, -wind_vel_lake_16h, -wind_dir_lake_16h) |>
   # summarize all variables by taking the value of the last hour (i.e. hour(time = 23))
@@ -323,41 +333,63 @@ MeteoCH_data_night <- MeteoCH_data_night |>
   mutate(
     wind_dir_8h_class = classify_wind_dir(wind_dir_8h),
     wind_dir_8h_NS = ifelse(wind_dir_8h > 90 & wind_dir_8h <= 270, "S", "N"),
+    wind_dir_8h_WE = ifelse(wind_dir_8h > 0 & wind_dir_8h <= 180, "E", "W"),
     wind_S_8h = ifelse(wind_dir_8h_NS == "S", wind_vel_8h, 0),
     wind_N_8h = ifelse(wind_dir_8h_NS == "N", wind_vel_8h, 0),
-    
+    wind_W_8h = ifelse(wind_dir_8h_WE == "W", wind_vel_8h, 0),
+    wind_E_8h = ifelse(wind_dir_8h_WE == "E", wind_vel_8h, 0),
     wind_dir_1d_class = classify_wind_dir(wind_dir_1d),
     wind_dir_1d_NS = ifelse(wind_dir_1d > 90 & wind_dir_1d <= 270, "S", "N"),
+    wind_dir_1d_WE = ifelse(wind_dir_1d > 0 & wind_dir_1d <= 180, "E", "W"),
     wind_S_1d = ifelse(wind_dir_1d_NS == "S", wind_vel_1d, 0),
     wind_N_1d = ifelse(wind_dir_1d_NS == "N", wind_vel_1d, 0),
-    
+    wind_W_1d = ifelse(wind_dir_1d_WE == "W", wind_vel_1d, 0),
+    wind_E_1d = ifelse(wind_dir_1d_WE == "E", wind_vel_1d, 0),
     wind_dir_3d_class = classify_wind_dir(wind_dir_3d),
     wind_dir_3d_NS = ifelse(wind_dir_3d > 90 & wind_dir_3d <= 270, "S", "N"),
+    wind_dir_3d_WE = ifelse(wind_dir_3d > 0 & wind_dir_3d <= 180, "E", "W"),
     wind_S_3d = ifelse(wind_dir_3d_NS == "S", wind_vel_3d, 0),
     wind_N_3d = ifelse(wind_dir_3d_NS == "N", wind_vel_3d, 0),
-    
+    wind_W_3d = ifelse(wind_dir_3d_WE == "W", wind_vel_3d, 0),
+    wind_E_3d = ifelse(wind_dir_3d_WE == "E", wind_vel_3d, 0),
     wind_dir_5d_class = classify_wind_dir(wind_dir_5d),
     wind_dir_5d_NS = ifelse(wind_dir_5d > 90 & wind_dir_5d <= 270, "S", "N"),
+    wind_dir_5d_WE = ifelse(wind_dir_5d > 0 & wind_dir_5d <= 180, "E", "W"),
     wind_S_5d = ifelse(wind_dir_5d_NS == "S", wind_vel_5d, 0),
-    wind_N_5d = ifelse(wind_dir_5d_NS == "N", wind_vel_5d, 0)) |>
+    wind_N_5d = ifelse(wind_dir_5d_NS == "N", wind_vel_5d, 0),
+    wind_W_5d = ifelse(wind_dir_5d_WE == "W", wind_vel_5d, 0),
+    wind_E_5d = ifelse(wind_dir_5d_WE == "E", wind_vel_5d, 0)
+    ) |>
   # Classify lake wind
   mutate(
     wind_dir_lake_8h_class = classify_wind_dir(wind_dir_lake_8h),
     wind_dir_lake_8h_NS = ifelse(wind_dir_lake_8h > 90 & wind_dir_lake_8h <= 270, "S", "N"),
+    wind_dir_lake_8h_WE = ifelse(wind_dir_lake_8h > 0 & wind_dir_lake_8h <= 180, "E", "W"),
     wind_S_lake_8h = ifelse(wind_dir_lake_8h_NS == "S", wind_vel_lake_8h, 0),
     wind_N_lake_8h = ifelse(wind_dir_lake_8h_NS == "N", wind_vel_lake_8h, 0),
+    wind_W_lake_8h = ifelse(wind_dir_lake_8h_WE == "W", wind_vel_lake_8h, 0),
+    wind_E_lake_8h = ifelse(wind_dir_lake_8h_WE == "E", wind_vel_lake_8h, 0),
     wind_dir_lake_1d_class = classify_wind_dir(wind_dir_lake_1d),
     wind_dir_lake_1d_NS = ifelse(wind_dir_lake_1d > 90 & wind_dir_lake_1d <= 270, "S", "N"),
+    wind_dir_lake_1d_WE = ifelse(wind_dir_lake_1d > 0 & wind_dir_lake_1d <= 180, "E", "W"),
     wind_S_lake_1d = ifelse(wind_dir_lake_1d_NS == "S", wind_vel_lake_1d, 0),
     wind_N_lake_1d = ifelse(wind_dir_lake_1d_NS == "N", wind_vel_lake_1d, 0),
+    wind_W_lake_1d = ifelse(wind_dir_lake_1d_WE == "W", wind_vel_lake_1d, 0),
+    wind_E_lake_1d = ifelse(wind_dir_lake_1d_WE == "E", wind_vel_lake_1d, 0),
     wind_dir_lake_3d_class = classify_wind_dir(wind_dir_lake_3d),
     wind_dir_lake_3d_NS = ifelse(wind_dir_lake_3d > 90 & wind_dir_lake_3d <= 270, "S", "N"),
+    wind_dir_lake_3d_WE = ifelse(wind_dir_lake_3d > 0 & wind_dir_lake_3d <= 180, "E", "W"),
     wind_S_lake_3d = ifelse(wind_dir_lake_3d_NS == "S", wind_vel_lake_3d, 0),
     wind_N_lake_3d = ifelse(wind_dir_lake_3d_NS == "N", wind_vel_lake_3d, 0),
+    wind_W_lake_3d = ifelse(wind_dir_lake_3d_WE == "W", wind_vel_lake_3d, 0),
+    wind_E_lake_3d = ifelse(wind_dir_lake_3d_WE == "E", wind_vel_lake_3d, 0),
     wind_dir_lake_5d_class = classify_wind_dir(wind_dir_lake_5d),
     wind_dir_lake_5d_NS = ifelse(wind_dir_lake_5d > 90 & wind_dir_lake_5d <= 270, "S", "N"),
+    wind_dir_lake_5d_WE = ifelse(wind_dir_lake_5d > 0 & wind_dir_lake_5d <= 180, "E", "W"),
     wind_S_lake_5d = ifelse(wind_dir_lake_5d_NS == "S", wind_vel_lake_5d, 0),
-    wind_N_lake_5d = ifelse(wind_dir_lake_5d_NS == "N", wind_vel_lake_5d, 0)
+    wind_N_lake_5d = ifelse(wind_dir_lake_5d_NS == "N", wind_vel_lake_5d, 0),
+    wind_W_lake_5d = ifelse(wind_dir_lake_5d_WE == "W", wind_vel_lake_5d, 0),
+    wind_E_lake_5d = ifelse(wind_dir_lake_5d_WE == "E", wind_vel_lake_5d, 0)
   ) 
 ```
 
@@ -367,7 +399,7 @@ MeteoCH_data_day <- MeteoCH_data_hourly |>
   filter(hour(time) > 6 & hour(time) <= 22) |>
   group_by(date = as.Date(time)) |>
   select(-air_temp, -precip, -humidity, -rad, -pressure, 
-         -wind_vel, -wind_dir, -water_temp, -water_temp_surface, -wind_dir_lake, -wind_vel_lake,
+         -wind_vel, -wind_dir, -water_temp, -water_temp_surface, -wind_dir_lake, -wind_vel_lake, -wind_dir_class, -wind_dir_NS, -wind_dir_WE,
          -air_temp_8h, -precip_8h, -humidity_8h, -rad_8h, -pressure_8h, 
          -wind_vel_8h, -wind_dir_8h, -water_temp_8h, -water_temp_surface_8h, -wind_dir_lake_8h, -wind_vel_lake_8h) |>
   # summarize all variables by taking the value of the last hour (i.e. hour(time = 22))
@@ -385,39 +417,63 @@ MeteoCH_data_day <- MeteoCH_data_hourly |>
   mutate(
     wind_dir_16h_class = classify_wind_dir(wind_dir_16h),
     wind_dir_16h_NS = ifelse(wind_dir_16h > 90 & wind_dir_16h <= 270, "S", "N"),
+    wind_dir_16h_WE = ifelse(wind_dir_16h > 0 & wind_dir_16h <= 180, "E", "W"),
     wind_S_16h = ifelse(wind_dir_16h_NS == "S", wind_vel_16h, 0),
     wind_N_16h = ifelse(wind_dir_16h_NS == "N", wind_vel_16h, 0),
+    wind_W_16h = ifelse(wind_dir_16h_WE == "W", wind_vel_16h, 0),
+    wind_E_16h = ifelse(wind_dir_16h_WE == "E", wind_vel_16h, 0),
     wind_dir_1d_class = classify_wind_dir(wind_dir_1d),
     wind_dir_1d_NS = ifelse(wind_dir_1d > 90 & wind_dir_1d <= 270, "S", "N"),
+    wind_dir_1d_WE = ifelse(wind_dir_1d > 0 & wind_dir_1d <= 180, "E", "W"),
     wind_S_1d = ifelse(wind_dir_1d_NS == "S", wind_vel_1d, 0),
     wind_N_1d = ifelse(wind_dir_1d_NS == "N", wind_vel_1d, 0),
+    wind_W_1d = ifelse(wind_dir_1d_WE == "W", wind_vel_1d, 0),
+    wind_E_1d = ifelse(wind_dir_1d_WE == "E", wind_vel_1d, 0),
     wind_dir_3d_class = classify_wind_dir(wind_dir_3d),
     wind_dir_3d_NS = ifelse(wind_dir_3d > 90 & wind_dir_3d <= 270, "S", "N"),
+    wind_dir_3d_WE = ifelse(wind_dir_3d > 0 & wind_dir_3d <= 180, "E", "W"),
     wind_S_3d = ifelse(wind_dir_3d_NS == "S", wind_vel_3d, 0),
     wind_N_3d = ifelse(wind_dir_3d_NS == "N", wind_vel_3d, 0),
+    wind_W_3d = ifelse(wind_dir_3d_WE == "W", wind_vel_3d, 0),
+    wind_E_3d = ifelse(wind_dir_3d_WE == "E", wind_vel_3d, 0),
     wind_dir_5d_class = classify_wind_dir(wind_dir_5d),
     wind_dir_5d_NS = ifelse(wind_dir_5d > 90 & wind_dir_5d <= 270, "S", "N"),
+    wind_dir_5d_WE = ifelse(wind_dir_5d > 0 & wind_dir_5d <= 180, "E", "W"),
     wind_S_5d = ifelse(wind_dir_5d_NS == "S", wind_vel_5d, 0),
-    wind_N_5d = ifelse(wind_dir_5d_NS == "N", wind_vel_5d, 0)
+    wind_N_5d = ifelse(wind_dir_5d_NS == "N", wind_vel_5d, 0),
+    wind_W_5d = ifelse(wind_dir_5d_WE == "W", wind_vel_5d, 0),
+    wind_E_5d = ifelse(wind_dir_5d_WE == "E", wind_vel_5d, 0)
   ) |>
   # Classify lake wind
   mutate(
     wind_dir_lake_16h_class = classify_wind_dir(wind_dir_lake_16h),
     wind_dir_lake_16h_NS = ifelse(wind_dir_lake_16h > 90 & wind_dir_lake_16h <= 270, "S", "N"),
+    wind_dir_lake_16h_WE = ifelse(wind_dir_lake_16h > 0 & wind_dir_lake_16h <= 180, "E", "W"),
     wind_S_lake_16h = ifelse(wind_dir_lake_16h_NS == "S", wind_vel_lake_16h, 0),
     wind_N_lake_16h = ifelse(wind_dir_lake_16h_NS == "N", wind_vel_lake_16h, 0),
+    wind_W_lake_16h = ifelse(wind_dir_lake_16h_WE == "W", wind_vel_lake_16h, 0),
+    wind_E_lake_16h = ifelse(wind_dir_lake_16h_WE == "E", wind_vel_lake_16h, 0),
     wind_dir_lake_1d_class = classify_wind_dir(wind_dir_lake_1d),
     wind_dir_lake_1d_NS = ifelse(wind_dir_lake_1d > 90 & wind_dir_lake_1d <= 270, "S", "N"),
+    wind_dir_lake_1d_WE = ifelse(wind_dir_lake_1d > 0 & wind_dir_lake_1d <= 180, "E", "W"),
     wind_S_lake_1d = ifelse(wind_dir_lake_1d_NS == "S", wind_vel_lake_1d, 0),
     wind_N_lake_1d = ifelse(wind_dir_lake_1d_NS == "N", wind_vel_lake_1d, 0),
+    wind_W_lake_1d = ifelse(wind_dir_lake_1d_WE == "W", wind_vel_lake_1d, 0),
+    wind_E_lake_1d = ifelse(wind_dir_lake_1d_WE == "E", wind_vel_lake_1d, 0),
     wind_dir_lake_3d_class = classify_wind_dir(wind_dir_lake_3d),
     wind_dir_lake_3d_NS = ifelse(wind_dir_lake_3d > 90 & wind_dir_lake_3d <= 270, "S", "N"),
+    wind_dir_lake_3d_WE = ifelse(wind_dir_lake_3d > 0 & wind_dir_lake_3d <= 180, "E", "W"),
     wind_S_lake_3d = ifelse(wind_dir_lake_3d_NS == "S", wind_vel_lake_3d, 0),
     wind_N_lake_3d = ifelse(wind_dir_lake_3d_NS == "N", wind_vel_lake_3d, 0),
+    wind_W_lake_3d = ifelse(wind_dir_lake_3d_WE == "W", wind_vel_lake_3d, 0),
+    wind_E_lake_3d = ifelse(wind_dir_lake_3d_WE == "E", wind_vel_lake_3d, 0),
     wind_dir_lake_5d_class = classify_wind_dir(wind_dir_lake_5d),
     wind_dir_lake_5d_NS = ifelse(wind_dir_lake_5d > 90 & wind_dir_lake_5d <= 270, "S", "N"),
+    wind_dir_lake_5d_WE = ifelse(wind_dir_lake_5d > 0 & wind_dir_lake_5d <= 180, "E", "W"),
     wind_S_lake_5d = ifelse(wind_dir_lake_5d_NS == "S", wind_vel_lake_5d, 0),
-    wind_N_lake_5d = ifelse(wind_dir_lake_5d_NS == "N", wind_vel_lake_5d, 0)
+    wind_N_lake_5d = ifelse(wind_dir_lake_5d_NS == "N", wind_vel_lake_5d, 0),
+    wind_W_lake_5d = ifelse(wind_dir_lake_5d_WE == "W", wind_vel_lake_5d, 0),
+    wind_E_lake_5d = ifelse(wind_dir_lake_5d_WE == "E", wind_vel_lake_5d, 0)
   )
 
 ```
@@ -448,7 +504,7 @@ MeteoCH_data_night <- MeteoCH_data_night |>
 MeteoCH_data_daily <- MeteoCH_data_day |>
   add_row(MeteoCH_data_night) |>
   arrange(time) |>
-  select(-wind_dir_h_class, -wind_dir_h_NS, -date)
+  select( -date)
 
 all_data_daily <- Thun_Network_data_daily |>
   select(time, Log_NR, T_mean_day, T_mean_night) |>
@@ -461,11 +517,17 @@ all_data_daily <- Thun_Network_data_daily |>
          UHI_night = air_temp_LCD_night - air_temp,
          UHI = ifelse(daynight == "d", UHI_day, UHI_night))
 
-
-# Add Thun Network data
 write.csv(all_data_daily, "../data/final_predictors/all_data_daily.csv")
 ```
 
+
+Remove temporary tables *(only when the data is saved and preprocessing finished!)*
+```{r}
+rm(strandbad, Water_data, Water_data_hourly, 
+   MeteoCH_data, MeteoCH_data_hourly, MeteoCH_data_night, MeteoCH_data_day,
+   Thun_Network_data_hourly, Thun_Network_data_daily,
+   Thun_Network_data, alplakes_data, extracted)
+```
 
 
 ## DELETE?

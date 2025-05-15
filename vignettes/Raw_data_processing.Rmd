@@ -238,3 +238,9 @@ print(IDAWEB_final_df)
 # save the dataframe
 write.csv(IDAWEB_final_df, "../data/IDAWEB/MeteoCH_Thun.csv")
 ```
+
+Remove temporary tables *(only when the data is saved and preprocessing finished!)*
+```{r}
+rm(IDAWEB_final_df, table1, table2, table3)
+```
+
