@@ -50,9 +50,9 @@ meta <- read_csv('../data/Metadata/metadata_Thun.csv', show_col_types = FALSE)
 meta_LU <- read_csv('../data/Metadata/Land_Use_Thun.csv', show_col_types = FALSE)
 
 meta <- meta |>
-  dplyr::select(Log_NR, STANDORT, NORD_CHTOPO, OST_CHTOPO, LV_03_N, LV_03_E) |>
+  dplyr::select(Log_NR, Location, NORD_CHTOPO, OST_CHTOPO, LV_03_N, LV_03_E) |>
   mutate(Log_NR = paste0("Log_", Log_NR)) |>
-  left_join(meta_LU, by = c("STANDORT" = "Location")) |>
+  left_join(meta_LU, by = "Location") |>
   rename(Log_NR = Log_NR.x) |>
   distinct() #remove duplicate rows
 ```
@@ -233,15 +233,14 @@ write_csv(data_long_diurnal_JAS, (paste0("../data/Thun Messnetz 2024/Thun_diurna
 ## Aggregate daily
 ### 1. Data aggregated from hourly data: Mean values. This compensates for missing 10-min data points if some hours have more NA values than others.
 data_long_daily <- data_long_hourly |>
-  mutate(time_day = date(time_hour - hours(1))) |> # 01:00 (current day) to 00:00 (next day) is aggregated
-  group_by(time_day, Log_NR) |>
+  mutate(time = date(time_hour - hours(1))) |> # 01:00 (current day) to 00:00 (next day) is aggregated
+  group_by(time, Log_NR) |>
   summarise(valid_hours = sum(!is.na(T_mean)), # Calculate valid hours as number of hours per day that contain data (not NA)
             across(c(T_mean, H_mean, UHI_mean, HI_mean), ~ mean(., na.rm = TRUE)),
             across(c(T_min, H_min, UHI_min, HI_min), ~ min(., na.rm = TRUE)),
             across(c(T_max, H_max, UHI_max, HI_max), ~ max(., na.rm = TRUE)),
             .groups = "drop") |>
-  mutate(across(everything(), ~ ifelse(is.nan(.)|is.infinite(.), NA, .))) |>
-  mutate(time_day = as.POSIXct(time_day, origin = "2024-05-01", format = "%Y-%m-%d", tz = target_timezone)) # Re-convert to POSIXct object
+  mutate(across(-time, ~ ifelse(is.nan(.) | is.infinite(.), NA, .)))
 
 
 ### 2. Re-calculate UHI from daily means
@@ -250,8 +249,8 @@ data_long_daily2 <- data_long_daily |>
   left_join(# Create a reference table with Log_401's temperature at each time
     data_long_daily |>
       filter(Log_NR == "Log_401")|>
-      select(time_day, Temperature_401 = T_mean), 
-    by = c("time_day")
+      select(time, Temperature_401 = T_mean), 
+    by = c("time")
   ) |>
   mutate(UHI_mean = T_mean - Temperature_401) |>
   select(-Temperature_401) 
@@ -259,15 +258,14 @@ data_long_daily2 <- data_long_daily |>
 
 ### 3. Nighttime values and indicators (21:00 - 07:00) following day: Tmin, Tropical Nights, Gfrörli Nights
 data_long_daily_night1 <- data_long_hourly |>
-  mutate(timeshift = time_hour - dhours(7),
-         time_day = floor_date(time_hour, unit = "day")) |> # 07 is the new 00
-  filter(hour(timeshift) >= 14) |>
-  group_by(time_day, Log_NR) |>
+  filter(hour(time_hour) > 21 | hour(time_hour) <= 7) |>
+  # shift time 7h back
+  mutate(time_hour = time_hour - hours(8)) |> # 07 is the new 00
+  group_by(time = as.Date(time_hour), Log_NR) |>
   summarise(valid_hours_night = sum(!is.na(T_min)),
             T_min_night = min(T_min, na.rm = TRUE),
             .groups = "drop") |>
-  mutate(across(everything(), ~ ifelse(is.nan(.)|is.infinite(.), NA, .)),
-         time_day = as.POSIXct(time_day, origin = "1970-01-01", tz = target_timezone)) |> # Re-convert to POSIXct object
+  mutate(across(-time, ~ ifelse(is.nan(.) | is.infinite(.), NA, .))) |>
   # Add indicators
   mutate(Tropical_night = ifelse(T_min_night >= 20 & T_min_night < 30, 1, 0),
          Gfroerli_night = ifelse(T_min_night <= 10 & T_min_night >= 0, 1, 0)) 
@@ -275,44 +273,40 @@ data_long_daily_night1 <- data_long_hourly |>
 
 ### 4. Nighttime values and indicators (22:00 - 06:00 following day): T_mean, nighttime UHI
 data_long_daily_night2 <- data_long_hourly |>
-  mutate(timeshift = time_hour - dhours(6),
-         time_day = floor_date(time_hour, unit = "day")) |> # 07 is the new 00
-  filter(hour(timeshift) >= 16) |>
-  group_by(time_day, Log_NR) |>
+  filter(hour(time_hour) > 22 | hour(time_hour) <= 6) |>
+  # shift time 7h back
+  mutate(time_hour = time_hour - hours(7)) |> # 06 is the new 00
+  group_by(time = as.Date(time_hour), Log_NR) |>
   summarise(T_mean_night = mean(T_mean, na.rm = TRUE),
             .groups = "drop") |>
-  mutate(across(everything(), ~ ifelse(is.nan(.)|is.infinite(.), NA, .)),
-         time_day = as.POSIXct(time_day, origin = "1970-01-01", tz = target_timezone)) # Re-convert to POSIXct object
+  mutate(across(-time, ~ ifelse(is.nan(.) | is.infinite(.), NA, .)))
 
 # Re-calculate UHI from T_mean_night
 data_long_daily_night2 <- data_long_daily_night2 |>
   left_join(# Create a reference table with Log_401's temperature at each time
     data_long_daily_night2 |>
       filter(Log_NR == "Log_401")|>
-      select(time_day, Temperature_401 = T_mean_night), 
-    by = c("time_day")
+      select(time, Temperature_401 = T_mean_night), 
+    by = c("time")
   ) |>
   mutate(UHI_night = T_mean_night - Temperature_401) |>
   select(-Temperature_401)
 
 # Join night data
 data_long_daily_night <- data_long_daily_night1 |>
-  full_join(data_long_daily_night2, by = c("time_day", "Log_NR")) |>
-  mutate(across(everything(), ~ ifelse(is.nan(.)|is.infinite(.), NA, .)),
-         time_day = as.POSIXct(time_day, origin = "1970-01-01", tz = target_timezone))
+  full_join(data_long_daily_night2, by = c("time", "Log_NR"))
 
 
 ### 5. Daytime values and indicators (06:00 - 22:00): T_mean, daytime UHI
 data_long_daily_day <- data_long_hourly |>
-  filter(hour(time_hour) >= 6, hour(time_hour) < 22) |>
-  mutate(time_day = floor_date(time_hour, unit = "day")) |> # 07 is the new 00
-  group_by(time_day, Log_NR) |>
+  filter(hour(time_hour) > 6, hour(time_hour) <= 22) |>
+  mutate(time = floor_date(time_hour, unit = "day")) |> # 07 is the new 00
+  group_by(time, Log_NR) |>
   summarise(valid_hours_day = sum(!is.na(T_mean)),
             T_mean_day = mean(T_mean, na.rm = TRUE),
             T_max_day = max(T_max, na.rm = TRUE),
             .groups = "drop") |>
-  mutate(across(everything(), ~ ifelse(is.nan(.)|is.infinite(.), NA, .)),
-         time_day = as.POSIXct(time_day, origin = "1970-01-01", tz = target_timezone)) |> # Re-convert to POSIXct object
+  mutate(across(-time, ~ ifelse(is.nan(.) | is.infinite(.), NA, .))) |>
   # Add daytime indicators
   mutate(Summer_day = ifelse(T_max_day >= 25 & T_max_day < 30, 1, 0),
          Hot_day = ifelse(T_max_day >= 30 & T_max_day < 35, 1, 0),
@@ -323,8 +317,8 @@ data_long_daily_day <- data_long_daily_day |>
   left_join(# Create a reference table with Log_401's temperature at each time
     data_long_daily_day |>
       filter(Log_NR == "Log_401")|>
-      select(time_day, Temperature_401 = T_mean_day), 
-    by = c("time_day")
+      select(time, Temperature_401 = T_mean_day), 
+    by = c("time")
   ) |>
   mutate(UHI_day = T_mean_day - Temperature_401) |>
   select(-Temperature_401)
@@ -342,12 +336,12 @@ data_long_daily_day <- data_long_daily_day |>
 
 # 7. Combine all daily data
 data_long_daily <- data_long_daily2 |>
-  full_join(data_long_daily_night, by = c("time_day", "Log_NR")) |>
-  full_join(data_long_daily_day, by = c("time_day", "Log_NR")) |>
+  full_join(data_long_daily_night, by = c("time", "Log_NR")) |>
+  full_join(data_long_daily_day, by = c("time", "Log_NR")) |>
   mutate(across(everything(), ~ ifelse(is.nan(.)|is.infinite(.), NA, .)),
-         time_day = as.POSIXct(time_day, origin = "1970-01-01")) |>
-  # remove hours and minutes from time_day
-  mutate(time_day = as.POSIXct(format(time_day, "%Y-%m-%d"))) 
+         time = as.POSIXct(time, origin = "1970-01-01")) |>
+  # remove hours and minutes from time
+  mutate(time = as.POSIXct(format(time, "%Y-%m-%d"))) 
 
 # Delete unused dataframes
 rm(data_long_daily2, data_long_daily_night, data_long_daily_day, data_long_daily_night1, data_long_daily_night2, data_long_daily_day)
@@ -361,7 +355,7 @@ write_csv(data_long_daily, (paste0("../data/Thun Messnetz 2024/Thun_daily_summar
 ```{r}
 # Aggregate monthly
 data_long_monthly <- data_long_daily |>
-  group_by(month = month(time_day), Log_NR) |>
+  group_by(month = month(time), Log_NR) |>
   summarise(across(c(T_mean, T_mean_day, T_mean_night, H_mean, UHI_mean, UHI_day, UHI_night, HI_mean), ~ mean(., na.rm = TRUE)),
             across(c(T_min, T_min_night, H_min, UHI_min, HI_min), ~ min(., na.rm = TRUE)),
             across(c(T_max, T_max_day, H_max, UHI_max, HI_max), ~ max(., na.rm = TRUE)),
@@ -376,7 +370,7 @@ write_csv(data_long_monthly, (paste0("../data/Thun Messnetz 2024/Thun_monthly_su
 ```{r}
 # Aggregate over whole time period
 data_long_MJJASO <- data_long_daily |>
-  filter(month(time_day) %in% c(5:10)) |>
+  filter(month(time) %in% c(5:10)) |>
   group_by(Log_NR) |>
   summarise(across(c(T_mean, T_mean_day, T_mean_night, H_mean, UHI_mean, UHI_day, UHI_night, HI_mean), ~ mean(., na.rm = TRUE)),
             across(c(T_min, T_min_night, H_min, UHI_min, HI_min), ~ min(., na.rm = TRUE)),
@@ -386,7 +380,7 @@ data_long_MJJASO <- data_long_daily |>
   mutate(across(everything(), ~ ifelse(is.nan(.)|is.infinite(.), NA, .)))
 
 data_long_JAS <- data_long_daily |>
-  filter(month(time_day) %in% c(7:9)) |>
+  filter(month(time) %in% c(7:9)) |>
   group_by(Log_NR) |>
   summarise(across(c(T_mean, T_mean_day, T_mean_night, H_mean, UHI_mean, UHI_day, UHI_night, HI_mean), ~ mean(., na.rm = TRUE)),
             across(c(T_min, T_min_night, H_min, UHI_min, HI_min), ~ min(., na.rm = TRUE)),

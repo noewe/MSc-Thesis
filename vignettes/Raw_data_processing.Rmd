@@ -235,12 +235,12 @@ print(IDAWEB_final_df)
 ```
 
 ```{r}
-# save the dataframe
-write.csv(IDAWEB_final_df, "../data/IDAWEB/MeteoCH_Thun.csv")
+# save the dataframe as rds (this preserves the data types)
+saveRDS(IDAWEB_final_df, "../data/IDAWEB/MeteoCH_Thun.rds")
 ```
 
 Remove temporary tables *(only when the data is saved and preprocessing finished!)*
 ```{r}
-rm(IDAWEB_final_df, table1, table2, table3)
+#rm(IDAWEB_final_df, table1, table2, table3)
 ```
 

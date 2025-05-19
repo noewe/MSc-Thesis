@@ -15,13 +15,11 @@ load_packages(c("dplyr", "ggplot2", "climaemet", "openair", "lubridate", "tidyve
 
 Classify wind
 ```{r}
-MeteoCH_data <- read.csv("../data/IDAWEB/MeteoCH_Thun.csv")
-# Convert the time column to a proper datetime format
-MeteoCH_data$time <- as.POSIXct(MeteoCH_data$time, format="%Y-%m-%d %H:%M:%S", tz = "UTC")
+MeteoCH_data <- readRDS("../data/IDAWEB/MeteoCH_Thun.rds")
 # Classify wind direction
 MeteoCH_data <- MeteoCH_data |>
   mutate(wind_dir_10min_class = case_when(
-    wind_dir_10min < 22.5 & wind_dir_10min >= 337.5 ~ "N",
+    wind_dir_10min < 22.5 | wind_dir_10min >= 337.5 ~ "N",
     wind_dir_10min >= 22.5 & wind_dir_10min < 67.5 ~ "NE",
     wind_dir_10min >= 67.5 & wind_dir_10min < 112.5 ~ "E",
     wind_dir_10min >= 112.5 & wind_dir_10min < 157.5 ~ "SE",
@@ -31,7 +29,7 @@ MeteoCH_data <- MeteoCH_data |>
     wind_dir_10min >= 292.5 & wind_dir_10min < 337.5 ~ "NW"
   )) |>
   mutate(wind_dir_h_class = case_when(
-    wind_dir_h < 22.5 & wind_dir_h >= 337.5 ~ "N",
+    wind_dir_h < 22.5 | wind_dir_h >= 337.5 ~ "N",
     wind_dir_h >= 22.5 & wind_dir_h < 67.5 ~ "NE",
     wind_dir_h >= 67.5 & wind_dir_h < 112.5 ~ "E",
     wind_dir_h >= 112.5 & wind_dir_h < 157.5 ~ "SE",
@@ -40,25 +38,12 @@ MeteoCH_data <- MeteoCH_data |>
     wind_dir_h >= 247.5 & wind_dir_h < 292.5 ~ "W",
     wind_dir_h >= 292.5 & wind_dir_h < 337.5 ~ "NW",
   )) |>
-  mutate(wind_dir_d_class = case_when(
-    wind_dir_d < 22.5 & wind_dir_d >= 337.5 ~ "N",
-    wind_dir_d >= 22.5 & wind_dir_d < 67.5 ~ "NE",
-    wind_dir_d >= 67.5 & wind_dir_d < 112.5 ~ "E",
-    wind_dir_d >= 112.5 & wind_dir_d < 157.5 ~ "SE",
-    wind_dir_d >= 157.5 & wind_dir_d < 202.5 ~ "S",
-    wind_dir_d >= 202.5 & wind_dir_d < 247.5 ~ "SW",
-    wind_dir_d >= 247.5 & wind_dir_d < 292.5 ~ "W",
-    wind_dir_d >= 292.5 & wind_dir_d < 337.5 ~ "NW",
-  )) |>
   mutate(wind_dir_10min_NS = ifelse(wind_dir_10min > 90 & wind_dir_10min <= 270, "S", "N"),
          wind_dir_h_NS = ifelse(wind_dir_h > 90 & wind_dir_h <= 270, "S", "N"),
-         wind_dir_d_NS = ifelse(wind_dir_d > 90 & wind_dir_d <= 270, "S", "N"),
          wind_dir_h_WE= ifelse(wind_dir_h > 0 & wind_dir_h <= 180, "E", "W"),
-         wind_dir_10min_WE= ifelse(wind_dir_10min > 0 & wind_dir_10min <= 180, "E", "W"),
-         wind_dir_d_WE= ifelse(wind_dir_d > 0 & wind_dir_d <= 180, "E", "W"))
+         wind_dir_10min_WE= ifelse(wind_dir_10min > 0 & wind_dir_10min <= 180, "E", "W"))
 
-write.csv(MeteoCH_data, "../data/IDAWEB/MeteoCH_Thun.csv")
-
+saveRDS(MeteoCH_data, "../data/IDAWEB/MeteoCH_Thun.rds")
 ```
 
 # Extract station information from geospatial layers and join to metadata
@@ -100,9 +85,26 @@ Water_data <- read.csv(
                 "Parametereinheit", "Gewässer", "Zeitstempel",
                 "Zeitpunkt_des_Auftretens", "Wert", "Freigabestatus") #There is a blank column in the csv. This code helps to prevent error
 )
+
+Water_data_2 <- read.csv(
+  "../data/external/Water - BAFU/2030_Wassertemperatur_10-Min-Mittel_2024-10-01_2024-12-01.csv",
+  skip = 9, # delete metadata
+  header = FALSE,
+  sep = ";",
+  dec = ".",
+  fill = TRUE,
+  fileEncoding = "latin1",  # Handles ä, ö, ü, ß etc.
+  col.names = c("Stationsname", "Stationsnummer", "Parameter", "Zeitreihe",
+                "Parametereinheit", "Gewässer", "Zeitstempel",
+                "Zeitpunkt_des_Auftretens", "Wert", "Freigabestatus") #There is a blank column in the csv. This code helps to prevent error
+)
+
+# Combine the two datasets
+Water_data <- rbind(Water_data, Water_data_2)
 Water_data <- Water_data |>
   mutate(time = as.POSIXct(Water_data$Zeitstempel, format = "%Y-%m-%d %H:%M:%S",  tz = "Europe/Zurich")) |>
-  select(time, water_temp = Wert)
+  select(time, water_temp = Wert) |>
+  filter(time>= "2024-05-01 00:00:00" & time <= "2024-10-31 23:59:59")
 
 
 
@@ -142,14 +144,7 @@ Water_data_hourly <- Water_data_hourly |>
 Water_data_hourly <- Water_data_hourly |>
    mutate(water_temp_surface = zoo::na.approx(water_temp_surface, x = time, na.rm = FALSE))
 
-# Water_data_daily_night <- Water_data_hourly |>
-#   filter(hour(time) >= 22 | hour(time) <= 6) |>
-#   # shift time 7h back
-#   mutate(time = time - hours(7)) |>
-#   group_by(time = as.Date(time)) |>
-#   summarise(water_temp = mean(water_temp, na.rm = TRUE),
-#             water_temp_surface = mean(water_temp_surface, na.rm = TRUE)) |>
-#   ungroup()
+visdat::vis_miss(Water_data_hourly)
 ```
 
 Load the Thun Network data
@@ -166,9 +161,8 @@ Thun_Network_data_hourly <- read.csv("../data/Thun Messnetz 2024/Thun_hourly_sum
   rename(time = time_hour)
 
 Thun_Network_data_daily <- read.csv("../data/Thun Messnetz 2024/Thun_daily_summary_2024-05-01_2024-10-30.csv") |>
-  mutate(time_day = as.POSIXct(time_day, format = "%Y-%m-%dT%H:%M:%OS", tz="UTC")) |>
-  mutate(time_day = with_tz(time_day, tzone = "Europe/Zurich")) |> #should start at 2024-05-01 02:00
-  rename(time = time_day)
+  mutate(time = as.POSIXct(time, format = "%Y-%m-%dT%H:%M:%OS", tz="UTC")) |>
+  mutate(time = with_tz(time, tzone = "Europe/Zurich")) #should start at 2024-05-01 02:00
 ```
 
 Load the wind data from Strandbad
@@ -206,14 +200,16 @@ strandbad <- strandbad |>
 
 # Aggregate MeteoCH data and add memory/rolling means
 ```{r}
-MeteoCH_data <- read.csv("../data/IDAWEB/MeteoCH_Thun.csv") 
-  # Enter one value in the column time in the first row: 2024-05-01 02:00
-MeteoCH_data$time[1] <- "2024-05-01 00:00:00"
+MeteoCH_data <- readRDS("../data/IDAWEB/MeteoCH_Thun.rds")
+print(tz(MeteoCH_data$time))
+
+tz(MeteoCH_data$time) <- "UTC"  # not mutate, direct assignment!
+print(tz(MeteoCH_data$time))
 
 MeteoCH_data <- MeteoCH_data |>
-  mutate(time = as.POSIXct(time, format="%Y-%m-%d %H:%M", tz = "UTC")) |> 
   mutate(time = with_tz(time, tzone = "Europe/Zurich")) |> #should start at 2024-05-01 02:00
-  select(-X.1, -X, -stn)
+  select(-stn)
+
 
 # MeteoCH_data_10min <- MeteoCH_data |>
 #   select(time, temp_air_2m_10min, temp_pot_2m_10m, precip_10min, RH_2m_10min, glob_rad_10min, airpress_10min, wind_vel_10min_ms, wind_vel_10min_kmh, wind_dir_10min, wind_dir_10min_class, wind_dir_10min_NS, CAP9, CAP18, CAP27, GWT8_Z500, GWT10_SLP, GWT10_Z500, GWT18_SLP, GWT18_Z500, GWT26_SLP, GWT26_Z500) |>
@@ -481,15 +477,26 @@ MeteoCH_data_day <- MeteoCH_data_hourly |>
 
 # Join the hourly Thun network data with the other Meteo data
 ```{r}
+#extract only date from time
 all_data_hourly <- Thun_Network_data_hourly |>
   select(time, Log_NR, T_mean) |>
   rename(air_temp_LCD = T_mean) |>
   left_join(meta, by = "Log_NR") |>
   left_join(MeteoCH_data_hourly, by = "time") |>
   select(-X, -HuM, -ID) |>
-  mutate(UHI = air_temp_LCD - air_temp)
+  mutate(UHI = air_temp_LCD - air_temp) |>
+  group_by(time) |>
+  mutate(UHI_LCD = if (any(Log_NR == "Log_401")) {
+            air_temp_LCD - air_temp_LCD[Log_NR == "Log_401"]
+          } else {
+            NA
+          }) |>
+  ungroup()
+
+#visdat::vis_miss(all_data_hourly, warn_large_data = FALSE)
 
 write.csv(all_data_hourly, "../data/final_predictors/all_data_hourly.csv")
+saveRDS(all_data_hourly, "../data/final_predictors/all_data_hourly.rds")
 ```
 
 # Join the half-daily data
@@ -504,20 +511,31 @@ MeteoCH_data_night <- MeteoCH_data_night |>
 MeteoCH_data_daily <- MeteoCH_data_day |>
   add_row(MeteoCH_data_night) |>
   arrange(time) |>
-  select( -date)
+  select( -date) |>
+  mutate(time = as.Date(time))
 
 all_data_daily <- Thun_Network_data_daily |>
-  select(time, Log_NR, T_mean_day, T_mean_night) |>
+  select(time, Log_NR, T_mean_day, T_mean_night, UHI_day, UHI_night) |>
   rename(air_temp_LCD_night = T_mean_night,
-         air_temp_LCD_day = T_mean_day) |>
+         air_temp_LCD_day = T_mean_day,
+         UHI_LCD_night = UHI_night,
+         UHI_LCD_day = UHI_day) |>
   left_join(meta, by = "Log_NR") |>
+  
   left_join(MeteoCH_data_daily, by = "time") |>
   select(-X, -HuM, -ID) |>
+  # UHI between reference temperature measured by SwissMetNet station and LCD
+  mutate(air_temp_LCD = ifelse(daynight == "d", air_temp_LCD_day, air_temp_LCD_night), 
+         UHI_LCD = ifelse(daynight == "d", UHI_LCD_day, UHI_LCD_night)) |>
   mutate(UHI_day = air_temp_LCD_day - air_temp,
          UHI_night = air_temp_LCD_night - air_temp,
-         UHI = ifelse(daynight == "d", UHI_day, UHI_night))
+         UHI = ifelse(daynight == "d", UHI_day, UHI_night)) |>
+  select(-UHI_day, -UHI_night, -air_temp_LCD_day, -air_temp_LCD_night, -UHI_LCD_day, -UHI_LCD_night)
+
+visdat::vis_miss(all_data_daily, warn_large_data = FALSE)
 
 write.csv(all_data_daily, "../data/final_predictors/all_data_daily.csv")
+saveRDS(all_data_daily, "../data/final_predictors/all_data_daily.rds")
 ```
 
 
