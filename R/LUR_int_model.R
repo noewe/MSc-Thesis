@@ -9,80 +9,106 @@
 #' @param model_type_short: A short string for the model type (default is "lur_model").
 
 
-LUR_int_model <- function(data, target, target_name, met_vars, spat_vars, model_type = "LUR Model", model_type_short = "lur_model", save_model = F, plot_lim = NA) {
+LUR_int_model <- function(train_data, test_data, target, target_name, met_vars, spat_vars, 
+                          model_type = "LUR Model", model_type_short = "lur_model", 
+                          save_model = FALSE, plot_lim = NA, verbose = TRUE) {
   library(dplyr)
   library(ggplot2)
   library(mvrsquared)
   
-  # create directory for models if it doesn't exist
-  if (!dir.exists(paste0("../models/", model_type_short))) {
-    dir.create(paste0("../models/", model_type_short))
-  }
+  # Create results directory if needed
+  dir.create(file.path("../results/models", model_type_short), recursive = TRUE, showWarnings = FALSE)
   
-  # Construct the interaction formula
+  # Drop NAs in training data
+  train_data <- train_data |> filter(!is.na(.data[[target]]))
+  test_data <- test_data |> filter(!is.na(.data[[target]]))
+  
+  # Construct formula with interactions
   interactions <- unlist(lapply(met_vars, function(met) {
     paste(met, spat_vars, sep = "*")
   }))
-  
   full_formula <- as.formula(
-    paste(target, "~",
-          paste(c(spat_vars, met_vars, interactions), collapse = " + "))
+    paste(target, "~", paste(c(spat_vars, met_vars, interactions), collapse = " + "))
   )
   
-  print("Model formula:")
-  print(full_formula)
-  
-  # Fit model and save it
-  model <- lm(full_formula, data = data)
-  if (save_model) {
-    saveRDS(model, file = paste0("../models/", model_type_short, "_model.rds"))
+  if (verbose) {
+    message("Model formula:")
+    print(full_formula)
   }
   
-  # Predict and calculate residuals
-  data <- data %>%
+  # Fit model
+  model <- lm(full_formula, data = train_data)
+  
+  # Save model
+  if (save_model) {
+    saveRDS(model, file = paste0("../results/models/", model_type_short, "/", model_type_short, ".rds"))
+  }
+  
+  # Drop rows with NAs in test data
+  predictor_vars <- unique(c(met_vars, spat_vars))
+  n_before <- nrow(test_data)
+  test_data <- test_data |> filter(if_all(all_of(predictor_vars), ~ !is.na(.)))
+  n_after <- nrow(test_data)
+  
+  if (verbose && (n_before != n_after)) {
+    message(sprintf("Dropped %d rows from test_data due to missing predictor values.", n_before - n_after))
+  }
+  
+  
+  # Predict on test data
+  test_data <- test_data |>
     mutate(
-      pred = predict(model),
+      pred = predict(model, newdata = test_data),
       residuals = .data[[target]] - pred,
       rel_error = (pred - .data[[target]]) / .data[[target]]
     )
   
-  # Error metrics by logger
-  Err <- data %>%
-    group_by(Log_NR) %>%
+  # Per-logger metrics
+  Err <- test_data |>
+    group_by(Log_NR) |>
     summarise(
       RMSE_Log = sqrt(mean(residuals^2)),
       R2_Log = calc_rsquared(.data[[target]], pred),
-      NRMSE_Log = RMSE_Log / mean(.data[[target]])
+      NRMSE_Log = RMSE_Log / mean(.data[[target]]),
+      .groups = "drop"
     )
   
-  data <- left_join(data, Err, by = "Log_NR")
+  test_data <- left_join(test_data, Err, by = "Log_NR")
   
   # Overall metrics
-  R2 <- round(summary(model)$r.squared, 3)
-  RMSE <- round(sqrt(mean(data$residuals^2)), 3)
+  R2 <- round(calc_rsquared(test_data[[target]], test_data$pred), 3)
+  RMSE <- round(sqrt(mean(test_data$residuals^2)), 3)
   
-  # Print model summary
-  print(summary(model))
+  if (verbose) {
+    print(summary(model))
+  }
   
-  # Plot
-  plot <- ggplot(data, aes(x = pred, y = .data[[target]])) +
+  # Plot predicted vs. actual
+  plot <- ggplot(test_data, aes(x = pred, y = .data[[target]])) +
     geom_point(alpha = 0.2) +
     labs(
-      x = paste(target_name, "predicted [K]"), 
-      y = paste(target_name, "measured [K]"), 
+      x = paste(target_name, "predicted [K]"),
+      y = paste(target_name, "measured [K]"),
       title = model_type,
       subtitle = substitute(R^2 == r2 ~ "; RMSE =" ~ rmse ~ "K", list(r2 = R2, rmse = RMSE))
     ) +
     geom_abline(intercept = 0, slope = 1, color = "red") +
     theme_bw()
-    if (!missing(plot_lim)) {
-      plot <- plot +
-        xlim(plot_lim) + ylim(plot_lim)
-    }
   
-  print(plot)
-  ggsave(paste0("../figures/models/", model_type_short, ".png"), plot = plot, width = 6.5, height = 4, dpi = 300)
+  if (!is.na(plot_lim[1])) {
+    plot <- plot + xlim(plot_lim) + ylim(plot_lim)
+  }
   
-  return(list(model = model, data = data, metrics = Err, plot = plot))
+  ggsave(paste0("../results/models/", model_type_short, "/mainplot_", model_type_short, ".png"),
+         plot = plot, width=6.5, height=4, dpi=300, units = "in", limitsize = FALSE)
+  
+  if (verbose) {
+    print(plot)
+  }
+
+  
+  return(list(model = model, test_data = test_data, metrics = Err, plot = plot))
 }
+
+
       

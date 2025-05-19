@@ -67,24 +67,29 @@ ggsave("../figures/models/Burger_Bern_TPI_500.png", width=6.5, height=4, dpi=300
 ## Run Burger model for Thun
 ```{r Load data, include=FALSE, message=FALSE, warning=FALSE}
 # Load the daily data
-Masterfile <- read.csv("../data/final_predictors/all_data_daily_night.csv",
-                       fileEncoding = "latin1"  # Handles ä, ö, ü, ß etc.
-                       ) |>
-  mutate(time = as.POSIXct(time, format="%d.%m.%Y %H:%M", tz = "UTC")) |> 
-  mutate(time = with_tz(time, tzone = "Europe/Zurich"))  #should start at 2024-05-01 02:00
+Masterfile <- readRDS("../data/final_predictors/all_data_daily.rds")
 
 Masterfile <- Masterfile |>
-  select(UHI_night,
+  filter(daynight == "n") |> # only night data)
+  select(UHI,
+         UHI_LCD,
+         TA_LCD = air_temp_LCD,
+         TA = air_temp,
+         Log_NR,
          AltDif = AD, 
          GA_25 = OS_GA_25,
          BUL_250 = LC_B_250,
          AC_750 = OS_AC_750,
          FO_1000 = OS_FO_1000,
          TPI_500 = TPI_500,
-         SW = Wind_S,
+         SW = wind_S,
          NR = precip_boolean,
-         GS = glob_rad,
-         VH_150 = VH_175) 
+         GS = rad_1d,
+         VH_150 = VH_175,
+         time) |>
+  filter(time<="2024-09-01") |>
+  drop_na()
+
 
 QM_TPI_500_Model<-mutate(Masterfile, UHI_est=6.035e-01-(8.310e-03*AltDif)-(2.869e-01*GA_25)+(1.006e+00*BUL_250)-(6.103e-01*AC_750)-(2.332e-02*VH_150)-(7.164e-01*FO_1000)-
                            (3.140e-03*TPI_500)-(4.913e-01*SW)-(9.963e-01*NR)+(6.563e-03*GS)+
@@ -92,12 +97,12 @@ QM_TPI_500_Model<-mutate(Masterfile, UHI_est=6.035e-01-(8.310e-03*AltDif)-(2.869
                            (1.396e-03*(SW*AltDif))-(4.788e-01*(SW*BUL_250))+(3.482e-01*(SW*AC_750))+(3.748e-01*(SW*FO_1000))-(8.287e-03*(SW*VH_150))-
                            (5.562e-03*(NR*AltDif))+(3.294e-01*(NR*GA_25))+(1.630e+00*(NR*AC_750))+(1.239e+00*(NR*FO_1000))+(2.038e-02*(NR*VH_150))-(5.588e-03*(NR*TPI_500)))
 
-lm <- lm(UHI_night ~ UHI_est, data=QM_TPI_500_Model)
+lm <- lm(UHI~ UHI_est, data=QM_TPI_500_Model)
 summary(lm)
 R2 <- round(summary(lm)$r.squared, 3)
 RMSE<-round(sqrt(mean(residuals(lm)^2)), 3)
 
-ggplot(QM_TPI_500_Model, mapping=aes(x=UHI_est, y= UHI_night)) +
+ggplot(QM_TPI_500_Model, mapping=aes(x=UHI_est, y= UHI)) +
   geom_point(alpha = 0.2) +
     labs(x="UHI intensity predicted [K]", 
        y="UHI intensity measured [K]", 
@@ -108,40 +113,49 @@ ggplot(QM_TPI_500_Model, mapping=aes(x=UHI_est, y= UHI_night)) +
   ylim(c(-4.5,6)) +
   geom_abline(intercept=0, slope=1, color="red") +
   theme_bw()
-ggsave("../figures/models/Burger_Thun_TPI_500.png", width=6.5, height=4, dpi=300)
+ggsave("../results/models/Burger_Thun/model_summary.png", width=6.5, height=4, dpi=300)
 ```
+Data Splitting
+```{r}
+Masterfile <- readRDS("../data/final_predictors/all_data_daily.rds")
+
+Masterfile <- Masterfile |>
+  filter(daynight == "n") |> # only night data)
+  # drop rows where air_temp_LCD, UHI or UHI_LCD is NA
+  filter(!is.na(air_temp_LCD) | !is.na(UHI) | !is.na(UHI_LCD))
+
+
+set.seed(123)  # for reproducibility
+split <- rsample::initial_split(Masterfile, prop = 0.8, strata = "UHI")
+Masterfile_train <- rsample::training(split)
+Masterfile_test <- rsample::testing(split)
+
+# Choose for which variables you want a density plot
+vars_to_plot <- c("UHI", "air_temp", "rad", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "wind_vel", "precip", "water_temp")
+
+plot_data <- Masterfile_train |> 
+  mutate(split = "train") |> 
+  bind_rows(Masterfile_test |> mutate(split = "test")) |> 
+  pivot_longer(cols = all_of(vars_to_plot), names_to = "variable", values_to = "value")
+
+plot_data |> 
+  ggplot(aes(x = value, y = ..density.., color = split)) +
+  geom_density() +
+  facet_wrap(~variable, scales = "free")
+```
+
 
 # 2. Calibrate the model on Thun
 ```{r}
-Masterfile <- read.csv("../data/final_predictors/all_data_daily_night.csv", 
-                       fileEncoding = "latin1"  # Handles ä, ö, ü, ß etc.
-                       ) |>
-  mutate(time = as.POSIXct(time, format="%Y-%m-%d", tz = "UTC")) |> 
-  mutate(time = with_tz(time, tzone = "Europe/Zurich"))  #should start at 2024-05-01 02:00
-Masterfile <- Masterfile |>
-  rename(AltDif = AD, 
-   GA_25 = OS_GA_25,
-   BUL_250 = LC_B_250,
-   AC_750 = OS_AC_750,
-   FO_1000 = OS_FO_1000,
-   TPI_500 = TPI_500,
-   SW = Wind_S,
-   NR = precip_boolean,
-   GS = glob_rad,
-   VH_150 = VH_175,
-   TA = temp_air_2m) |>
-  # drop the rows there one of the predictors is NA
-  filter(!is.na(AltDif) & !is.na(GA_25) & !is.na(BUL_250) & !is.na(AC_750) & !is.na(FO_1000) & 
-         !is.na(TPI_500) & !is.na(SW) & !is.na(NR) & !is.na(GS) & !is.na(VH_150) & !is.na(UHI_night))
-
 source("../R/LUR_int_model.R")
 result <- LUR_int_model(
-  data = Masterfile,
-  target = "UHI_night",
+  train_data = Masterfile_train,
+  test_data = Masterfile_test,
+  target = "UHI",
   target_name = "mean nighttime UHI",
-  met_vars = c("SW", "NR", "GS"),
-  spat_vars = c("AltDif", "GA_25", "BUL_250", "AC_750", "FO_1000", "TPI_500", "VH_150"),
-  model_type = "LUR INT TPI -> UHI night",
+  met_vars = c("wind_S", "precip_boolean", "rad_1d"),
+  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_175"),
+  model_type = "LUR INT TPI -> UHI night (Ref = MeteoCH)",
   model_type_short = "lur_int_tpi_UHI_night",
   plot_lim = c(-4.5,6)
 )
@@ -150,12 +164,14 @@ result <- LUR_int_model(
 
 # 3. Predict absolute temperature and add temperature as a predictor
 ```{r}
+source("../R/LUR_int_model.R")
 result <- LUR_int_model(
-  data = Masterfile,
-  target = "T_mean_night",
+  train_data = Masterfile_train,
+  test_data = Masterfile_test,
+  target = "air_temp_LCD",
   target_name = "Mean night temperature",
-  met_vars = c("SW", "NR", "GS", "TA"),
-  spat_vars = c("AltDif", "GA_25", "BUL_250", "AC_750", "FO_1000", "TPI_500", "VH_150"),
+  met_vars = c("wind_S", "precip_boolean", "rad_1d", "air_temp"),
+  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_175"),
   model_type = "LUR INT TPI -> TA night",
   model_type_short = "lur_int_tpi_ta_night",
   save_model = FALSE
@@ -168,35 +184,62 @@ Add more meteorological predictors
 source("../R/LUR_int_model.R")
 
 result <- LUR_int_model(
-  data = Masterfile,
-  target = "UHI_night",
+  train_data = Masterfile_train,
+  test_data = Masterfile_test,
+  target = "UHI",
   target_name = "mean nighttime UHI",
-  met_vars = c("SW", "NR", "GS", "TA"),
-  spat_vars = c("AltDif", "GA_25", "BUL_250", "AC_750", "FO_1000", "TPI_500", "VH_150"),
+  met_vars = c("wind_S", "precip_boolean", "rad_1d", "air_temp"),
+  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_175"),
   model_type = "LUR INT TPI with TA -> UHI night",
   model_type_short = "lur_int_tpi_UHI_night_ta",
   plot_lim = c(-4.5,6)
 )
 
 result <- LUR_int_model(
-  data = Masterfile,
-  target = "UHI_night",
+  train_data = Masterfile_train,
+  test_data = Masterfile_test,
+  target = "UHI",
   target_name = "mean nighttime UHI",
-  met_vars = c("SW", "NR", "GS", "TA", "GWT18_SLP"),
-  spat_vars = c("AltDif", "GA_25", "BUL_250", "AC_750", "FO_1000", "TPI_500", "VH_150"),
+  met_vars = c("wind_S", "precip_boolean", "rad_1d", "GWT18_SLP"),
+  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_175"),
   model_type = "LUR INT TPI with GWT18_SLP -> UHI night",
   model_type_short = "lur_int_tpi_UHI_night_GWT_18_SLP",
   plot_lim = c(-4.5,6)
 )
 
 result <- LUR_int_model(
-  data = Masterfile,
-  target = "UHI_night",
+  train_data = Masterfile_train,
+  test_data = Masterfile_test,
+  target = "UHI",
   target_name = "mean nighttime UHI",
-  met_vars = c("SW", "NR", "GS", "TA", "CAP27"),
-  spat_vars = c("AltDif", "GA_25", "BUL_250", "AC_750", "FO_1000", "TPI_500", "VH_150"),
+  met_vars = c("wind_S", "precip_boolean", "rad_1d", "CAP27"),
+  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_175"),
   model_type = "LUR INT TPI with CAP27 -> UHI night",
   model_type_short = "lur_int_tpi_UHI_night_CAP27",
+  plot_lim = c(-4.5,6)
+)
+
+result <- LUR_int_model(
+  train_data = Masterfile_train,
+  test_data = Masterfile_test,
+  target = "UHI",
+  target_name = "mean nighttime UHI",
+  met_vars = c("wind_S", "precip_boolean", "rad_1d", "water_temp_1d"),
+  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_175"),
+  model_type = "LUR INT TPI with water_temp_1d -> UHI night",
+  model_type_short = "lur_int_tpi_UHI_night_water_temp",
+  plot_lim = c(-4.5,6)
+)
+
+result <- LUR_int_model(
+  train_data = Masterfile_train,
+  test_data = Masterfile_test,
+  target = "UHI",
+  target_name = "mean nighttime UHI",
+  met_vars = c("wind_S", "precip_boolean", "rad_1d", "water_temp_surface_1d"),
+  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_175"),
+  model_type = "LUR INT TPI with water_temp_surface_1d -> UHI night",
+  model_type_short = "lur_int_tpi_UHI_night_water_temp_surface",
   plot_lim = c(-4.5,6)
 )
 ```
@@ -205,28 +248,28 @@ result <- LUR_int_model(
 ```{r}
 # plot predicted UHI and wind speed
 data_result <- result$data
-ggplot(data_result, aes(x = ws, y = pred, color = SW)) +
+ggplot(data_result, aes(x = wind_vel, y = pred, color = wind_dir_class)) +
   geom_point(alpha = 0.2) +
   labs(x = "Wind speed [km/h]", y = "UHI intensity predicted [K]", title = "Predicted UHI intensity") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-f# plot predicted UHI and wind speed
-ggplot(Masterfile, aes(x = Log_NR, y = UHI_pred)) +
+# plot predicted UHI and wind speed
+ggplot(data_result, aes(x = Log_NR, y = pred)) +
   geom_point(alpha = 0.2) +
   labs(x = "Logger", y = "UHI intensity predicted [K]", title = "Predicted UHI intensity") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 # plot predicted UHI and wind speed
-ggplot(Masterfile, aes(x = date(time), y = UHI_pred, color = Log_NR)) +
+ggplot(data_result, aes(x = time, y = pred, color = Log_NR)) +
   geom_point(alpha = 0.2) +
   labs(x = "Logger", y = "UHI intensity predicted [K]", title = "Predicted UHI intensity") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 plotly::ggplotly(
-  ggplot(Masterfile, aes(x = date(time), y = residuals, color = Log_NR)) +
+  ggplot(data_result, aes(x = time, y = residuals, color = Log_NR)) +
   geom_point(alpha = 0.2) +
   labs(x = "Logger", y = "Residuals [K]", title = "Residuals per Logger") +
   theme_minimal() +
@@ -234,7 +277,7 @@ plotly::ggplotly(
 )
   #turn into plotly
 
-ggplot(Masterfile, aes(x = factor(Log_NR), y = residuals, color = LU_7)) +
+ggplot(data_result, aes(x = factor(Log_NR), y = residuals, color = LU_7)) +
   geom_boxplot() +
   labs(x = "Logger", y = "Residuals [K]", title = "Residuals per logger", subtitle = model_type_short, legend = "land use type") +
   scale_color_manual(values = c("black", "darkgreen", "brown", "#44dd55", "orange", "#2255cc")) +
