@@ -477,6 +477,10 @@ MeteoCH_data_day <- MeteoCH_data_hourly |>
 
 # Join the hourly Thun network data with the other Meteo data
 ```{r}
+# Save the meteo predictors
+write.csv(MeteoCH_data_hourly, "../data/final_predictors/Meteo_predictors_hourly.csv")
+saveRDS(MeteoCH_data_hourly, "../data/final_predictors/Meteo_predictors_hourly.rds")
+
 #extract only date from time
 all_data_hourly <- Thun_Network_data_hourly |>
   select(time, Log_NR, T_mean) |>
@@ -513,6 +517,9 @@ MeteoCH_data_daily <- MeteoCH_data_day |>
   arrange(time) |>
   select( -date) |>
   mutate(time = as.Date(time))
+
+write.csv(MeteoCH_data_daily, "../data/final_predictors/Meteo_predictors_daily.csv")
+saveRDS(MeteoCH_data_daily, "../data/final_predictors/Meteo_predictors_daily.rds")
 
 all_data_daily <- Thun_Network_data_daily |>
   select(time, Log_NR, T_mean_day, T_mean_night, UHI_day, UHI_night) |>

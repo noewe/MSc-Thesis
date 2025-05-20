@@ -38,20 +38,21 @@ QM_TPI_500_Model<-mutate(Masterfile, UHI_est=6.035e-01-(8.310e-03*AltDif)-(2.869
                            (1.396e-03*(SW*AltDif))-(4.788e-01*(SW*BUL_250))+(3.482e-01*(SW*AC_750))+(3.748e-01*(SW*FO_1000))-(8.287e-03*(SW*VH_150))-
                            (5.562e-03*(NR*AltDif))+(3.294e-01*(NR*GA_25))+(1.630e+00*(NR*AC_750))+(1.239e+00*(NR*FO_1000))+(2.038e-02*(NR*VH_150))-(5.588e-03*(NR*TPI_500)))
 
-# summary(lm(Diff_Zoll ~ UHI_est, data=QM_TPI_500_Model))
-# Errors<-((QM_TPI_500_Model$Diff_Zoll - QM_TPI_500_Model$UHI_est)^2)
-# RMSE<-sqrt(mean(Errors, na.rm=T))
 lm <- lm(Diff_Zoll ~ UHI_est, data=QM_TPI_500_Model)
 summary(lm)
 R2 <- round(summary(lm)$r.squared, 3)
-RMSE<-round(sqrt(mean(residuals(lm)^2)), 3)
+RMSE<-round(summary(lm)$sigma, 3)
+MBE<-round(mean(QM_TPI_500_Model$UHI_est - QM_TPI_500_Model$Diff_Zoll, na.rm = TRUE), 3)
 
 ggplot(QM_TPI_500_Model, mapping=aes(x=UHI_est, y= Diff_Zoll)) +
   geom_point(alpha = 0.2) +
   labs(x="UHI intensity predicted [K]", 
        y="UHI intensity measured [K]", 
        title="Interaction model TPI Bern", 
-       subtitle = substitute(R^2 == r2 ~ "; RMSE =" ~ rmse  ~ "K", list(r2 = R2, rmse = RMSE))
+              subtitle = substitute(
+          R^2 == r2 ~ "; RMSE =" ~ rmse ~ "K" ~ "; MBE =" ~ mbe ~ "K",
+          list(r2 = R2, rmse = RMSE, mbe = MBE)
+        )
   ) +
   # geom_text(x=-1.5, y=5.5, label= paste("R2 =", R2), color="orange") +
   # geom_text(x=-1.5, y=4.5, label= paste("RMSE=", RMSE), color="orange") +
@@ -59,7 +60,7 @@ ggplot(QM_TPI_500_Model, mapping=aes(x=UHI_est, y= Diff_Zoll)) +
   ylim(c(-4.5,6)) +
   geom_abline(intercept=0, slope=1, color="red") +
   theme_bw()
-ggsave("../figures/models/Burger_Bern_TPI_500.png", width=6.5, height=4, dpi=300)
+ggsave("../figures/models/Burger_Bern/Burger_Bern_TPI_500.png", width=6.5, height=4, dpi=300)
 
 ```
 
@@ -100,14 +101,18 @@ QM_TPI_500_Model<-mutate(Masterfile, UHI_est=6.035e-01-(8.310e-03*AltDif)-(2.869
 lm <- lm(UHI~ UHI_est, data=QM_TPI_500_Model)
 summary(lm)
 R2 <- round(summary(lm)$r.squared, 3)
-RMSE<-round(sqrt(mean(residuals(lm)^2)), 3)
+RMSE<-round(summary(lm)$sigma, 3)
+MBE<-round(mean(QM_TPI_500_Model$UHI_est - QM_TPI_500_Model$UHI, na.rm = TRUE), 3)
 
 ggplot(QM_TPI_500_Model, mapping=aes(x=UHI_est, y= UHI)) +
   geom_point(alpha = 0.2) +
     labs(x="UHI intensity predicted [K]", 
        y="UHI intensity measured [K]", 
        title="Interaction model TPI Thun (calibrated on Bern)", 
-       subtitle = substitute(R^2 == r2 ~ "; RMSE =" ~ rmse ~ "K", list(r2 = R2, rmse = RMSE))
+       subtitle = substitute(
+          R^2 == r2 ~ "; RMSE =" ~ rmse ~ "K" ~ "; MBE =" ~ mbe ~ "K",
+          list(r2 = R2, rmse = RMSE, mbe = MBE)
+        )
   ) +
   xlim(c(-4.5,6)) +
   ylim(c(-4.5,6)) +
@@ -165,6 +170,20 @@ result <- LUR_int_model(
 # 3. Predict absolute temperature and add temperature as a predictor
 ```{r}
 source("../R/LUR_int_model.R")
+
+result <- LUR_int_model(
+  train_data = Masterfile_train,
+  test_data = Masterfile_test,
+  target = "air_temp_LCD",
+  target_name = "Mean night temperature",
+  met_vars = c("wind_S", "precip_boolean", "rad_1d"),
+  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_175"),
+  model_type = "LUR INT TPI -> TA night",
+  model_type_short = "lur_int_tpi_ta_night",
+  save_model = FALSE,
+  plot_lim = c(3, 25)
+)
+
 result <- LUR_int_model(
   train_data = Masterfile_train,
   test_data = Masterfile_test,
@@ -173,8 +192,9 @@ result <- LUR_int_model(
   met_vars = c("wind_S", "precip_boolean", "rad_1d", "air_temp"),
   spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_175"),
   model_type = "LUR INT TPI -> TA night",
-  model_type_short = "lur_int_tpi_ta_night",
-  save_model = FALSE
+  model_type_short = "lur_int_tpi_ta_night_ta",
+  save_model = FALSE,
+  plot_lim = c(3, 25)
 )
 
 ```

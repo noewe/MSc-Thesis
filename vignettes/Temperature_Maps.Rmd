@@ -8,6 +8,167 @@ output: html_document
 This script produces a heatmap and associated statistics from a model.
 
 ```{r}
+  library(terra)
+  library(lubridate)
+  library(dplyr)
+```
 
+
+```{r}
+date <- "2024-08-23"
+  library(terra)
+  library(lubridate)
+  library(dplyr)
+
+create_meteo_tiffs <- function(date, 
+                               meteo_path = "../data/final_predictors/Meteo_predictors_daily.rds", 
+                               template_path = "../data/Geodata/LULCTopo_Thun/AD.tif", 
+                               output_dir = "../data/Geodata/Meteo_daily/",
+                               overwrite = FALSE) {
+
+
+  # Load template raster
+  template <- rast(template_path)
+
+  # Load meteo data
+  meteo_data <- readRDS(meteo_path)
+
+  # Filter for specified date
+  meteo_filtered <- meteo_data |> filter(time == ymd(date))
+  if (nrow(meteo_filtered) == 0) stop("No data found for the specified date.")
+
+  # Create output directories for day and night
+  dir.create(file.path(output_dir, date, "d"), recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(output_dir, date, "n"), recursive = TRUE, showWarnings = FALSE)
+
+  # Store rasters
+  rasters <- list()
+
+  for (dn in c("d", "n")) {
+    subset <- meteo_filtered |> filter(daynight == dn) |> select(-time, -daynight)
+    if (nrow(subset) != 1) warning(paste("Expected 1 row for", dn, "but found", nrow(subset)))
+
+    for (var in names(subset)) {
+      r <- template
+      values(r) <- subset[[var]]
+      key <- paste0(var, "_", dn)
+      rasters[[key]] <- r
+
+      # Save to file
+      filename <- file.path(output_dir, date, dn, paste0(var, ".tif"))
+      if (!file.exists(filename) || overwrite) {
+        writeRaster(r, filename, overwrite = overwrite)
+      }
+    }
+  }
+
+  return(rasters)
+}
+
+
+# Example usage
+rasters <- create_meteo_tiffs(date)
+plot(rasters$air_temp_d)
+plot(rasters$air_temp_n)
+```
+
+```{r}
+# test variables
+
+  meteo_dir = "../data/Geodata/Meteo_daily"
+  lulc_dir = "../data/Geodata/LULCTopo_Thun"
+  overwrite = TRUE
+  model = result$model
+  date = "2024-08-23"
+  daynight = "n"
+  output_path = "../results/models/test/UHI_night_2024-08-23.tif"
+```
+
+```{r}
+# predict_temperature_map <- function(model, 
+#                                     date, 
+#                                     daynight = "n",
+#                                     meteo_dir = "../data/Geodata/Meteo_daily",
+#                                     lulc_dir = "../data/Geodata/LULCTopo_Thun",
+#                                     output_path = NULL, overwrite = TRUE) {
+#   
+
+
+  # Extract variable names from model formula (excluding the response)
+  model_vars <- all.vars(formula(model))[-1]
+  print(paste("Model variables:", paste(model_vars, collapse = ", ")))
+
+  raster_list <- list()
+  missing_vars <- c()
+
+  for (var in model_vars) {
+    # Try meteo raster (date + daynight based path)
+    meteo_path <- file.path(meteo_dir, date, daynight, paste0(var, ".tif"))
+    lulc_path <- file.path(lulc_dir, paste0(var, ".tif"))
+
+    if (file.exists(meteo_path)) {
+      raster_list[[var]] <- rast(meteo_path)
+    } else if (file.exists(lulc_path)) {
+      raster_list[[var]] <- rast(lulc_path)
+    } else {
+      missing_vars <- c(missing_vars, var)
+    }
+  }
+
+  # Stop if any rasters are missing
+  if (length(missing_vars) > 0) {
+    stop("Missing raster layers for predictors: ", paste(missing_vars, collapse = ", "))
+  }
+  
+  print("All variables found. Proceeding with prediction...")
+
+  # Stack and predict
+  raster_stack <- rast(raster_list)
+  prediction <- predict(raster_stack, model, na.rm = TRUE)
+  
+  print("Prediction successful!")
+
+  # Optionally save
+  if (!is.null(output_path)) {
+    writeRaster(prediction, filename = output_path, overwrite = overwrite)
+  }
+  
+  # Create ggplot preview
+    # Convert raster to data.frame for ggplot
+    df <- as.data.frame(prediction, xy = TRUE, na.rm = TRUE)
+    names(df)[3] <- "predicted_temp"
+
+    p <- ggplot(df, aes(x = x, y = y, fill = predicted_temp)) +
+      geom_raster() +
+      scale_fill_viridis_c(name = "Predicted UHI [K]") +
+      coord_equal() +
+      labs(
+        title = paste("Urban Heat Island, predicted"),
+        subtitle = paste(date, "|", ifelse(daynight == "d", "Day", "Night")),
+        x = "Longitude", y = "Latitude"
+      ) +
+      #hide white borders of the map
+      coord_cartesian(expand = FALSE) +
+      theme_bw()
+
+    print(p)
+    # return(list(raster = prediction, plot = p))
+    
+# }
+
+
+```
+
+
+```{r}
+map <- predict_temperature_map(
+  model = result$model,
+  date = "2024-08-23",
+  daynight = "n",
+  output_path = "../results/models/test/UHI_night_2024-08-23.tif"
+)
+
+# View the plot
+map$plot
 ```
 

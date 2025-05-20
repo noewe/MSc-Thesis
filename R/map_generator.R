@@ -1,6 +1,24 @@
+
+
+
+# Creates tiffs of the meteorological predictors for a given date
+MeteoCH_data_daily
+
+create_meteo_tiffs <- function(date) {
+  
+  # load a raster of the area of interest for later using as template for the meteo rasters
+  exapmle_file <- rast("../data/Geodata/LULCTopo_Thun/AD.tif")
+  
+  # load the meteo data
+  meteo_data <- readRDS("../data/final_predictors/Meteo_predictors_daily.rds")
+  
+  # Create a raster for each meteo variable
+
+}
+
+
 # Function adapted from Nils Timmer and Patrick Bigler
 # https://github.com/Urban-Climate-Unibe/Land_Canton_Bern
-
 map_generator <- function(date, meteo_data, model, save = F){
   
   # Read tifs

@@ -70,6 +70,7 @@ LUR_int_model <- function(train_data, test_data, target, target_name, met_vars, 
       RMSE_Log = sqrt(mean(residuals^2)),
       R2_Log = calc_rsquared(.data[[target]], pred),
       NRMSE_Log = RMSE_Log / mean(.data[[target]]),
+      MBE_Log = mean(pred - .data[[target]]),
       .groups = "drop"
     )
   
@@ -78,6 +79,7 @@ LUR_int_model <- function(train_data, test_data, target, target_name, met_vars, 
   # Overall metrics
   R2 <- round(calc_rsquared(test_data[[target]], test_data$pred), 3)
   RMSE <- round(sqrt(mean(test_data$residuals^2)), 3)
+  MBE <- round(mean(test_data$pred - test_data[[target]]), 3)
   
   if (verbose) {
     print(summary(model))
@@ -90,7 +92,10 @@ LUR_int_model <- function(train_data, test_data, target, target_name, met_vars, 
       x = paste(target_name, "predicted [K]"),
       y = paste(target_name, "measured [K]"),
       title = model_type,
-      subtitle = substitute(R^2 == r2 ~ "; RMSE =" ~ rmse ~ "K", list(r2 = R2, rmse = RMSE))
+      subtitle = substitute(
+        R^2 == r2 ~ "; RMSE =" ~ rmse ~ "K" ~ "; MBE =" ~ mbe ~ "K",
+        list(r2 = R2, rmse = RMSE, mbe = MBE)
+      )
     ) +
     geom_abline(intercept = 0, slope = 1, color = "red") +
     theme_bw()
@@ -105,6 +110,7 @@ LUR_int_model <- function(train_data, test_data, target, target_name, met_vars, 
   if (verbose) {
     print(plot)
   }
+  
 
   
   return(list(model = model, test_data = test_data, metrics = Err, plot = plot))
