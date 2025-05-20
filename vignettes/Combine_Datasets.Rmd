@@ -230,7 +230,18 @@ MeteoCH_data_hourly <- MeteoCH_data |>
          wind_dir_WE = wind_dir_h_WE) |>
   # join with water_temp data
   left_join(Water_data_hourly, by = "time") |>
-  left_join(strandbad, by = "time")
+  left_join(strandbad, by = "time") |>
+    mutate(CAP9 = as.factor(CAP9),
+         CAP18 = as.factor(CAP18),
+         CAP27 = as.factor(CAP27),
+         GWT8_Z500 = as.factor(GWT8_Z500),
+         GWT10_SLP = as.factor(GWT10_SLP),
+         GWT10_Z500 = as.factor(GWT10_Z500),
+         GWT18_SLP = as.factor(GWT18_SLP),
+         GWT18_Z500 = as.factor(GWT18_Z500),
+         GWT26_SLP = as.factor(GWT26_SLP),
+         GWT26_Z500 = as.factor(GWT26_Z500)
+    )
 
  MeteoCH_data_hourly <- MeteoCH_data_hourly |>
     arrange(time)|> # make sure it's in the right order
@@ -478,6 +489,12 @@ MeteoCH_data_day <- MeteoCH_data_hourly |>
 # Join the hourly Thun network data with the other Meteo data
 ```{r}
 # Save the meteo predictors
+# all variables of type char as factors
+MeteoCH_data_hourly <- MeteoCH_data_hourly |>
+  mutate_if(is.character, as.factor) |>
+  # all variables that have "wind_dir" in their name are factors
+  mutate(across(contains("wind_dir"), as.factor)) 
+
 write.csv(MeteoCH_data_hourly, "../data/final_predictors/Meteo_predictors_hourly.csv")
 saveRDS(MeteoCH_data_hourly, "../data/final_predictors/Meteo_predictors_hourly.rds")
 
@@ -516,7 +533,11 @@ MeteoCH_data_daily <- MeteoCH_data_day |>
   add_row(MeteoCH_data_night) |>
   arrange(time) |>
   select( -date) |>
-  mutate(time = as.Date(time))
+  mutate(time = as.Date(time)) |>
+# all variables of type char as factors
+  mutate_if(is.character, as.factor) |>
+  # all variables that have "wind_dir" in their name are factors
+  mutate(across(contains("wind_dir"), as.factor)) 
 
 write.csv(MeteoCH_data_daily, "../data/final_predictors/Meteo_predictors_daily.csv")
 saveRDS(MeteoCH_data_daily, "../data/final_predictors/Meteo_predictors_daily.rds")

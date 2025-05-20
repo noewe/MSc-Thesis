@@ -127,7 +127,18 @@ Masterfile <- readRDS("../data/final_predictors/all_data_daily.rds")
 Masterfile <- Masterfile |>
   filter(daynight == "n") |> # only night data)
   # drop rows where air_temp_LCD, UHI or UHI_LCD is NA
-  filter(!is.na(air_temp_LCD) | !is.na(UHI) | !is.na(UHI_LCD))
+  filter(!is.na(air_temp_LCD) | !is.na(UHI) | !is.na(UHI_LCD)) |>
+  mutate(CAP9 = as.factor(CAP9),
+         CAP18 = as.factor(CAP18),
+         CAP27 = as.factor(CAP27),
+         GWT8_Z500 = as.factor(GWT8_Z500),
+         GWT10_SLP = as.factor(GWT10_SLP),
+         GWT10_Z500 = as.factor(GWT10_Z500),
+         GWT18_SLP = as.factor(GWT18_SLP),
+         GWT18_Z500 = as.factor(GWT18_Z500),
+         GWT26_SLP = as.factor(GWT26_SLP),
+         GWT26_Z500 = as.factor(GWT26_Z500)
+)
 
 
 set.seed(123)  # for reproducibility
@@ -136,7 +147,7 @@ Masterfile_train <- rsample::training(split)
 Masterfile_test <- rsample::testing(split)
 
 # Choose for which variables you want a density plot
-vars_to_plot <- c("UHI", "air_temp", "rad", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "wind_vel", "precip", "water_temp")
+vars_to_plot <- c("UHI", "air_temp", "rad", "wind_vel", "precip", "precip_boolean", "water_temp", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500")
 
 plot_data <- Masterfile_train |> 
   mutate(split = "train") |> 
@@ -147,6 +158,31 @@ plot_data |>
   ggplot(aes(x = value, y = ..density.., color = split)) +
   geom_density() +
   facet_wrap(~variable, scales = "free")
+```
+
+```{r}
+# Load helper functions
+source("../R/LUR_int_model.R")
+source("../R/map_helpers.R")
+
+# load daily measurement data
+  measurement_data <- read.csv("../data/Thun Messnetz 2024/Thun_daily_summary_2024-05-01_2024-10-30.csv") |>
+    mutate(time = as.POSIXct(time, format = "%Y-%m-%dT%H:%M:%OS", tz="UTC")) |>
+    mutate(time = with_tz(time, tzone = "Europe/Zurich")) #should start at 2024-05-01 02:00
+  
+# Dates to predict the models
+dates = c("2024-08-23", "2024-07-27", "2024-09-26") #highest UHI, average UHI, lowest UHI
+```
+
+```{r}
+# Check the mean UHI per day
+daily_means <- measurement_data |>
+  group_by(time) |>
+  summarise(mean_UHI_night = mean(UHI_night, na.rm = FALSE)) 
+  ggplot(data = daily_means, aes(x = time, y = mean_UHI_night)) +
+  geom_line() +
+  labs(x = "Date", y = "Mean UHI [K]", title = "Mean nighttime UHI per day") +
+  theme_minimal()
 ```
 
 
@@ -164,13 +200,22 @@ result <- LUR_int_model(
   model_type_short = "lur_int_tpi_UHI_night",
   plot_lim = c(-4.5,6)
 )
+
+for (date in dates) {
+  predict_temperature_map(
+    model = result$model,
+    date = date,
+    daynight = "n",
+    meteo_dir = "../data/Geodata/Meteo_daily",
+    lulc_dir = "../data/Geodata/LULCTopo_Thun",
+    output_path = "../results/models/lur_int_tpi_UHI_night/"
+  )
+}
 ```
 
 
 # 3. Predict absolute temperature and add temperature as a predictor
 ```{r}
-source("../R/LUR_int_model.R")
-
 result <- LUR_int_model(
   train_data = Masterfile_train,
   test_data = Masterfile_test,
@@ -184,6 +229,16 @@ result <- LUR_int_model(
   plot_lim = c(3, 25)
 )
 
+predict_temperature_map(
+  model = result$model,
+  date = "2024-08-23",
+  daynight = "n",
+  meteo_dir = "../data/Geodata/Meteo_daily",
+  lulc_dir = "../data/Geodata/LULCTopo_Thun",
+  output_path = "../results/models/lur_int_tpi_ta_night/"
+)
+
+
 result <- LUR_int_model(
   train_data = Masterfile_train,
   test_data = Masterfile_test,
@@ -195,6 +250,14 @@ result <- LUR_int_model(
   model_type_short = "lur_int_tpi_ta_night_ta",
   save_model = FALSE,
   plot_lim = c(3, 25)
+)
+predict_temperature_map(
+  model = result$model,
+  date = "2024-08-23",
+  daynight = "n",
+  meteo_dir = "../data/Geodata/Meteo_daily",
+  lulc_dir = "../data/Geodata/LULCTopo_Thun",
+  output_path = "../results/models/lur_int_tpi_ta_night_ta/"
 )
 
 ```
@@ -214,6 +277,17 @@ result <- LUR_int_model(
   model_type_short = "lur_int_tpi_UHI_night_ta",
   plot_lim = c(-4.5,6)
 )
+for (date in dates) {
+  predict_temperature_map(
+    model = result$model,
+    date = date,
+    daynight = "n",
+    meteo_dir = "../data/Geodata/Meteo_daily",
+    lulc_dir = "../data/Geodata/LULCTopo_Thun",
+    output_path = "../results/models/lur_int_tpi_UHI_night_ta/"
+  )
+}
+
 
 result <- LUR_int_model(
   train_data = Masterfile_train,
@@ -226,6 +300,17 @@ result <- LUR_int_model(
   model_type_short = "lur_int_tpi_UHI_night_GWT_18_SLP",
   plot_lim = c(-4.5,6)
 )
+for (date in dates) {
+  predict_temperature_map(
+    model = result$model,
+    date = date,
+    daynight = "n",
+    meteo_dir = "../data/Geodata/Meteo_daily",
+    lulc_dir = "../data/Geodata/LULCTopo_Thun",
+    output_path = "../results/models/lur_int_tpi_UHI_night_GWT_18_SLP/"
+  )
+}
+
 
 result <- LUR_int_model(
   train_data = Masterfile_train,
@@ -238,6 +323,17 @@ result <- LUR_int_model(
   model_type_short = "lur_int_tpi_UHI_night_CAP27",
   plot_lim = c(-4.5,6)
 )
+for (date in dates) {
+  predict_temperature_map(
+    model = result$model,
+    date = date,
+    daynight = "n",
+    meteo_dir = "../data/Geodata/Meteo_daily",
+    lulc_dir = "../data/Geodata/LULCTopo_Thun",
+    output_path = "../results/models/lur_int_tpi_UHI_night_CAP27/"
+  )
+}
+
 
 result <- LUR_int_model(
   train_data = Masterfile_train,
@@ -250,6 +346,17 @@ result <- LUR_int_model(
   model_type_short = "lur_int_tpi_UHI_night_water_temp",
   plot_lim = c(-4.5,6)
 )
+for (date in dates) {
+  predict_temperature_map(
+    model = result$model,
+    date = date,
+    daynight = "n",
+    meteo_dir = "../data/Geodata/Meteo_daily",
+    lulc_dir = "../data/Geodata/LULCTopo_Thun",
+    output_path = "../results/models/lur_int_tpi_UHI_night_water_temp/"
+  )
+}
+
 
 result <- LUR_int_model(
   train_data = Masterfile_train,
@@ -262,8 +369,41 @@ result <- LUR_int_model(
   model_type_short = "lur_int_tpi_UHI_night_water_temp_surface",
   plot_lim = c(-4.5,6)
 )
+for (date in dates) {
+  predict_temperature_map(
+    model = result$model,
+    date = date,
+    daynight = "n",
+    meteo_dir = "../data/Geodata/Meteo_daily",
+    lulc_dir = "../data/Geodata/LULCTopo_Thun",
+    output_path = "../results/models/lur_int_tpi_UHI_night_water_temp_surface/"
+  )
+}
 ```
 
+```{r}
+result <- LUR_int_model(
+  train_data = Masterfile_train,
+  test_data = Masterfile_test,
+  target = "UHI",
+  target_name = "mean nighttime UHI",
+  met_vars = c("wind_S", "precip_boolean", "rad_1d", "water_temp_1d", "GWT18_SLP", "air_temp"),
+  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_175"),
+  model_type = "LUR INT TPI with WT, GWT18, TA -> UHI night",
+  model_type_short = "lur_int_tpi_UHI_night_water_ta_gwt",
+  plot_lim = c(-4.5,6)
+)
+for (date in dates) {
+  predict_temperature_map(
+    model = result$model,
+    date = date,
+    daynight = "n",
+    meteo_dir = "../data/Geodata/Meteo_daily",
+    lulc_dir = "../data/Geodata/LULCTopo_Thun",
+    output_path = "../results/models/lur_int_tpi_UHI_night_water_ta_gwt/"
+  )
+}
+```
 
 ```{r}
 # plot predicted UHI and wind speed
