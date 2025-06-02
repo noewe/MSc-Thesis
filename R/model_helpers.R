@@ -1,39 +1,31 @@
-#' Fits a linear regression model with interaction terms between meteorological and spatial variables.
-#' The model and a simple plot of the results are saved to files.
-#' @param data: A data frame containing the data to be used for modeling.
-#' @param target: name of the target variable (dependent variable).
-#' @param target_name: A string indicating the name of the target variable for plotting
-#' @param met_vars: A vector of names of meteorological predictors
-#' @param spat_vars: A vector of names of spatial predictors.
-#' @param model_type: A string indicating the type of model (default is "LUR Model").
-#' @param model_type_short: A short string for the model type (default is "lur_model").
-#' @param algorithm: A string indicating the algorithm used (default is NA). "RF", "LUR"
 
-source("R/model_helpers.R")
+create_interaction_formula <- function(target, spat_vars, met_vars) {
 
-LUR_int_model <- function(train_data, test_data, target, target_name, met_vars, spat_vars, 
-                          model_type = "LUR Model", model_type_short = "lur_model", 
-                          save_model = FALSE, plot_lim = NA) {
-  library(dplyr)
-  library(ggplot2)
-  library(mvrsquared)
+  # Construct formula with interactions
+  interactions <- unlist(lapply(met_vars, function(met) {
+    paste(met, spat_vars, sep = "*")
+  }))
+  full_formula <- as.formula(
+    paste(target, "~", paste(c(spat_vars, met_vars, interactions), collapse = " + "))
+  )
   
-  # Create results directory if needed
-  dir.create(file.path("../results/models", model_type_short), recursive = TRUE, showWarnings = FALSE, algorithm = NA)
+  message("Model formula:")
+  print(full_formula)
   
-  # Drop NAs in training data
-  train_data <- train_data |> filter(!is.na(.data[[target]]))
-  test_data <- test_data |> filter(!is.na(.data[[target]]))
-  
-  full_formula <- create_interaction_formula(target, spat_vars, met_vars)
-  
-  # Fit model 
-  model <- lm(full_formula, data = train_data)
-  
-  # Save model
-  if (save_model) {
-    saveRDS(model, file = paste0("../results/models/", model_type_short, "/", model_type_short, ".rds"))
-  }
+  return(full_formula)
+}
+
+
+
+predict_model <- function(model, 
+                          test_data, 
+                          target, 
+                          target_name, 
+                          met_vars, 
+                          spat_vars, 
+                          model_type, 
+                          model_type_short, 
+                          plot_lim = c(0, 30)) {
   
   # Drop rows with NAs in test data
   predictor_vars <- unique(c(met_vars, spat_vars))
@@ -44,7 +36,6 @@ LUR_int_model <- function(train_data, test_data, target, target_name, met_vars, 
   if (n_before != n_after) {
     message(sprintf("Dropped %d rows from test_data due to missing predictor values.", n_before - n_after))
   }
-  
   
   # Predict on test data
   test_data <- test_data |>
@@ -72,7 +63,7 @@ LUR_int_model <- function(train_data, test_data, target, target_name, met_vars, 
   RMSE <- round(sqrt(mean(test_data$residuals^2)), 3)
   MBE <- round(mean(test_data$pred - test_data[[target]]), 3)
   
-    print(summary(model))
+  print(summary(model))
   
   # Plot predicted vs. actual
   plot <- ggplot(test_data, aes(x = pred, y = .data[[target]])) +
@@ -95,11 +86,18 @@ LUR_int_model <- function(train_data, test_data, target, target_name, met_vars, 
   
   ggsave(paste0("../results/models/", model_type_short, "/mainplot_", model_type_short, ".png"),
          plot = plot, width=6.5, height=4, dpi=300, units = "in", limitsize = FALSE)
-
-    print(plot)
   
-  return(list(model = model, test_data = test_data, metrics = Err, plot = plot))
+  print(plot)
+  
+  return(list(
+    model = model,
+    test_data = test_data,
+    metrics = Err,
+    plot = plot,
+    R2 = R2,
+    RMSE = RMSE,
+    MBE = MBE
+  ))
+  
 }
 
-
-      

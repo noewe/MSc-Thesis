@@ -63,21 +63,48 @@ predict_temperature_map <- function(model,
   model_vars <- all.vars(formula(model))[-1]
   print(paste("Model variables:", paste(model_vars, collapse = ", ")))
   
+  # Extract variable types from model
+  model_terms <- terms(model)
+  factor_vars <- attr(model_terms, "dataClasses")[attr(model_terms, "dataClasses") == "factor"]
+  factor_vars <- names(factor_vars)
+  
   raster_list <- list()
   missing_vars <- c()
   
+  # for (var in model_vars) {
+  #   # Construct raster paths
+  #   meteo_path <- file.path(meteo_dir, date, daynight, paste0(var, ".tif"))
+  #   lulc_path <- file.path(lulc_dir, paste0(var, ".tif"))
+  #   
+  #   if (file.exists(meteo_path)) {
+  #     raster_list[[var]] <- rast(meteo_path)
+  #   } else if (file.exists(lulc_path)) {
+  #     raster_list[[var]] <- rast(lulc_path)
+  #   } else {
+  #     missing_vars <- c(missing_vars, var)
+  #   }
+  # }
   for (var in model_vars) {
-    # Construct raster paths
     meteo_path <- file.path(meteo_dir, date, daynight, paste0(var, ".tif"))
     lulc_path <- file.path(lulc_dir, paste0(var, ".tif"))
     
     if (file.exists(meteo_path)) {
-      raster_list[[var]] <- rast(meteo_path)
+      r <- rast(meteo_path)
     } else if (file.exists(lulc_path)) {
-      raster_list[[var]] <- rast(lulc_path)
+      r <- rast(lulc_path)
     } else {
       missing_vars <- c(missing_vars, var)
+      next
     }
+    
+    # If variable was a factor in the model, make raster a factor too
+    if (var %in% factor_vars) {
+      levels_in_model <- levels(model$model[[var]])
+      r <- as.factor(r)
+      levels(r) <- data.frame(value = as.numeric(levels_in_model), label = levels_in_model)
+    }
+    
+    raster_list[[var]] <- r
   }
   
   if (length(missing_vars) > 0) {
@@ -106,7 +133,7 @@ predict_temperature_map <- function(model,
   measurement_data$pred <- terra::extract(prediction, vect(measurement_sf))[,2]
   
   # Compute metrics
-  residuals <- measurement_data$UHI - measurement_data$pred
+  residuals <- measurement_data$pred - measurement_data$UHI
   rmse <- sqrt(mean(residuals^2, na.rm = TRUE))
   r2 <- 1 - sum(residuals^2, na.rm = TRUE) / sum((measurement_data$UHI - mean(measurement_data$UHI, na.rm = TRUE))^2)
   mbe <- mean(residuals, na.rm = TRUE)

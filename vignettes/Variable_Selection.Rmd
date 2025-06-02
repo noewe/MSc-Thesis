@@ -12,44 +12,37 @@ load_packages(c("dplyr", "ggplot2", "lubridate", "ggpubr", "lsr"))
 
 Correlation between UHI and predictors
 ```{r setup, include=FALSE}
-meteo_all <- read.csv("../data/final_predictors/predictors_daily_night.csv", 
-                       fileEncoding = "latin1"  # Handles ä, ö, ü, ß etc.
-                       ) |>
-  mutate(time = as.POSIXct(time, format="%Y-%m-%d", tz = "UTC")) |>
-  mutate(time = with_tz(time, tzone = "Europe/Zurich")) |> #should start at 2024-05-01 02:00
-  # categorical variables as factors
-  mutate(
-    wd_class = as.factor(wd_class),
-    wd_NS = as.factor(wd_NS),
-    Wind_S = as.factor(Wind_S),
-    CAP9 = as.factor(CAP9),
-    CAP18 = as.factor(CAP18),
-    CAP27 = as.factor(CAP27),
-    GWT8_Z500 = as.factor(GWT8_Z500),
-    GWT10_SLP = as.factor(GWT10_SLP),
-    GWT10_Z500 = as.factor(GWT10_Z500),
-    GWT18_SLP = as.factor(GWT18_SLP),
-    GWT18_Z500 = as.factor(GWT18_Z500),
-    GWT26_SLP = as.factor(GWT26_SLP),
-    GWT26_Z500 = as.factor(GWT26_Z500)
-  )
+meteo_all <- readRDS("../data/final_predictors/all_data_daily.rds")
 
 meteo_all_aggr <- meteo_all |>
+  filter(daynight == "n") |>
   group_by(time) |>
   summarise(
-    UHI_night = mean(UHI_night, na.rm = TRUE),
-    ws = mean(ws),
-    wd = mean(wd),
-    wd_class = as.factor(first(wd_class)),
-    wd_NS = as.factor(first(wd_NS)),
-    Wind_S = first(Wind_S),
-    glob_rad = first(glob_rad),
-    RH_2m = first(RH_2m),
-    airpress = first(airpress),
-    temp_air_2m = first(temp_air_2m),
-    water_temp = first(water_temp),
+    UHI = mean(UHI, na.rm = TRUE),
+    wind_vel = first(wind_vel),
+    wind_vel_1d = first(wind_vel_1d),
+    wind_dir = first(wind_dir),
+    wind_dir_1d = first(wind_dir_1d),
+    wind_dir_class = first(wind_dir_class),
+    wind_dir_1d_class = first(wind_dir_1d_class),
+    wind_dir_NS = first(wind_dir_NS),
+    wind_dir_1d_NS = first(wind_dir_1d_NS),
+    wind_S = first(wind_S),
+    wind_S_1d = first(wind_S_1d),
+    rad = first(rad),
+    rad_1d = first(rad_1d),
+    humidity = first(humidity),
+    humidity_1d = first(humidity_1d),
+    pressure = first(pressure),
+    pressure_1d = first(pressure_1d),
+    air_temp = first(air_temp),
+    air_temp_1d = first(air_temp_1d),
+    water_temp = first(air_temp),
+    water_temp_1d = first(water_temp_1d),
     precip = first(precip),
-    precip_boolean = as.factor(first(precip_boolean)),
+    precip_1d = first(precip_1d),
+    precip_boolean = first(precip_boolean),
+    precip_1d_boolean = first(precip_1d_boolean),
     CAP9 = as.factor(first(CAP9)),
     CAP18 = as.factor(first(CAP18)),
     CAP27 = as.factor(first(CAP27)),
@@ -68,10 +61,10 @@ meteo_all_aggr <- meteo_all |>
 ```{r}
 # Filter and compute r for each wind direction
 cor_df <- meteo_all_aggr |>
-  filter(ws < 10) |>
-  group_by(wd_NS) |>
-  summarise(r = cor(ws, UHI_night, use = "complete.obs")) |>
-  mutate(r_label = paste0("r (", wd_NS, ") = ", round(r, 2))) |>
+  filter(wind_vel < 10) |>
+  group_by(wind_dir_NS) |>
+  summarise(r = cor(wind_vel, UHI, use = "complete.obs")) |>
+  mutate(r_label = paste0("r (", wind_dir_NS, ") = ", round(r, 2))) |>
   pull(r_label)
 
 # Combine into one subtitle string
@@ -79,7 +72,7 @@ subtitle_text <- paste(cor_df, collapse = "; ")
 
 # Plot with subtitle
 meteo_all_aggr |>
-  ggplot(aes(x = ws, y = UHI_night, color = wd_NS)) +
+  ggplot(aes(x = wind_vel, y = UHI, color = wind_dir_NS)) +
   geom_point(alpha = 0.8) +
   geom_smooth(method = "lm", se = FALSE) +
   labs(
@@ -97,35 +90,66 @@ meteo_all_aggr |>
         legend.text = element_text(size = 8),
         plot.subtitle = element_text(size = 8))
 
-ggsave("../figures/Variable Selection/WindSpeed_vs_UHI_wd.png", width = 5, height = 5.5, dpi = 300)
+ggsave("../results/Variable Selection/WindSpeed_vs_UHI_wind_dir.png", width = 5, height = 5.5, dpi = 300)
 
 ```
 
 
 ```{r}
 # list with all the variables and their names for the plot titles
-variables <- list(
-  list(name = "temp_air_2m", title = "Air Temperature [°C]", descr = "Air temperature"),
-  list(name = "precip", title = "Precipitation [mm]", descr = "Precipitation"),
-  list(name = "ws", title = "Wind Speed [km/h]", descr = "Wind speed"),
-  list(name = "glob_rad", title = "Global Solar Radiation last 24h [W/m2]", descr = "Global solar radiation"),
-  list(name = "RH_2m", title = "Relative Humidity [%]", descr = "Relative humidity"),
-  list(name = "airpress", title = "Air Pressure [hPa]", descr = "Air pressure"),
-  list(name = "water_temp", title = "Water Temperature [°C]", descr = "Water temperature")
+variables_num <- list(
+  list(name = "wind_vel", title = "Wind Speed [km/h]", descr = "Wind Speed (8h)"),
+  list(name = "wind_vel_1d", title = "Wind Speed 1d [km/h]", descr = "Wind Speed (24h)"),
+  list(name = "wind_S", title = "Southern Wind Component", descr = "South Wind (8h)"),
+  list(name = "wind_S_1d", title = "Southern Wind Component 1d", descr = "South Wind (24h)"),
+  list(name = "rad", title = "Global Solar Radiation [W/m²]", descr = "Global Radiation (8h)"),
+  list(name = "rad_1d", title = "Global Solar Radiation 1d [W/m²]", descr = "Global Radiation (24h)"),
+  list(name = "humidity", title = "Relative Humidity [%]", descr = "Relative Humidity (8h)"),
+  list(name = "humidity_1d", title = "Relative Humidity 1d [%]", descr = "Relative Humidity (24h)"),
+  list(name = "pressure", title = "Air Pressure [hPa]", descr = "Air Pressure (8h)"),
+  list(name = "pressure_1d", title = "Air Pressure 1d [hPa]", descr = "Air Pressure (24h)"),
+  list(name = "air_temp", title = "Air Temperature [°C]", descr = "Air Temperature (8h)"),
+  list(name = "air_temp_1d", title = "Air Temperature 1d [°C]", descr = "Air Temperature (24h)"),
+  list(name = "water_temp", title = "Water Temperature [°C]", descr = "Water Temperature (8h)"),
+  list(name = "water_temp_1d", title = "Water Temperature 1d [°C]", descr = "Water Temperature (24h)"),
+  list(name = "precip", title = "Precipitation [mm]", descr = "Precipitation (8h)"),
+  list(name = "precip_1d", title = "Precipitation 1d [mm]", descr = "Precipitation (24h)")
+  # list(name = "precip_boolean", title = "Precipitation Occurrence", descr = "Whether precipitation occurred"),
+  # list(name = "precip_1d_boolean", title = "Precipitation Occurrence 1d", descr = "Daily precipitation occurrence")
 )
+
+variables_fact <- list(
+  list(name = "wind_dir", title = "Wind Direction [°]", descr = "Instantaneous wind direction"),
+  list(name = "wind_dir_1d", title = "Wind Direction 1d [°]", descr = "Daily average wind direction"),
+  list(name = "wind_dir_class", title = "Wind Direction Class", descr = "Wind direction class (categorical)"),
+  list(name = "wind_dir_1d_class", title = "Wind Direction 1d Class", descr = "Daily wind direction class"),
+  list(name = "wind_dir_NS", title = "North-South Wind Component", descr = "Instantaneous N–S wind component"),
+  list(name = "wind_dir_1d_NS", title = "North-South Wind Component 1d", descr = "Daily N–S wind component"),
+  list(name = "CAP9", title = "Circulation Type CAP9", descr = "Circulation type class (9 types)"),
+  list(name = "CAP18", title = "Circulation Type CAP18", descr = "Circulation type class (18 types)"),
+  list(name = "CAP27", title = "Circulation Type CAP27", descr = "Circulation type class (27 types)"),
+  list(name = "GWT8_Z500", title = "GWT8 Z500", descr = "Großwettertyp (8 types) from Z500 field"),
+  list(name = "GWT10_SLP", title = "GWT10 SLP", descr = "Großwettertyp (10 types) from SLP field"),
+  list(name = "GWT10_Z500", title = "GWT10 Z500", descr = "Großwettertyp (10 types) from Z500 field"),
+  list(name = "GWT18_SLP", title = "GWT18 SLP", descr = "Großwettertyp (18 types) from SLP field"),
+  list(name = "GWT18_Z500", title = "GWT18 Z500", descr = "Großwettertyp (18 types) from Z500 field"),
+  list(name = "GWT26_SLP", title = "GWT26 SLP", descr = "Großwettertyp (26 types) from SLP field"),
+  list(name = "GWT26_Z500", title = "GWT26 Z500", descr = "Großwettertyp (26 types) from Z500 field")
+)
+
 
 # Loop through each variable and create a scatter plot
 
-for (var in variables) {
+for (var in variables_num) {
   var_name <- var$name
   var_title <- var$title
   var_descr <- var$descr
 
   # Calculate Pearson correlation coefficient
-  r_val <- cor(meteo_all_aggr[[var_name]], meteo_all_aggr$UHI_night, use = "complete.obs")
+  r_val <- cor(meteo_all_aggr[[var_name]], meteo_all_aggr$UHI, use = "complete.obs")
   r_text <- paste0("r = ", round(r_val, 2))
 
-  p <- ggplot(meteo_all_aggr, aes(x = !!sym(var_name), y = UHI_night)) +
+  p <- ggplot(meteo_all_aggr, aes(x = !!sym(var_name), y = UHI)) +
     geom_point() +
     geom_smooth(method = "lm", se = FALSE) +
     labs(
@@ -138,31 +162,35 @@ for (var in variables) {
     theme(legend.position = "none")
   
   print(p)
-  ggsave(paste0("../figures/Variable Selection/", var_name, "_vs_UHI.png"), plot = p, 
+  ggsave(paste0("../results/Variable Selection/", var_name, "_vs_UHI.png"), plot = p, 
          width = 5, height = 5.5, dpi = 300)
 }
 ```
 Correlation tests for categorical variables like weather type
 ```{r}
-variables <- list(
-  list(name = "CAP9", title = "CAP9"),
-  list(name = "CAP18", title = "CAP18"),
-  list(name = "CAP27", title = "CAP27"),
-  list(name = "GWT8_Z500", title = "GWT8 Z500"),
-  list(name = "GWT10_SLP", title = "GWT10 SLP"),
-  list(name = "GWT10_Z500", title = "GWT10 Z500"),
-  list(name = "GWT18_SLP", title = "GWT18 SLP"),
-  list(name = "GWT18_Z500", title = "GWT18 Z500"),
-  list(name = "GWT26_SLP", title = "GWT26 SLP"),
-  list(name = "GWT26_Z500", title = "GWT26 Z500")
+variables_fact <- list(
+  list(name = "wind_dir_class", title = "Wind Direction Class", descr = "Wind direction class (categorical)"),
+  list(name = "wind_dir_1d_class", title = "Wind Direction 1d Class", descr = "Daily wind direction class"),
+  list(name = "wind_dir_NS", title = "North-South Wind Component", descr = "Instantaneous N–S wind component"),
+  list(name = "wind_dir_1d_NS", title = "North-South Wind Component 1d", descr = "Daily N–S wind component"),
+  list(name = "CAP9", title = "Circulation Type CAP9", descr = "Circulation type class (9 types)"),
+  list(name = "CAP18", title = "Circulation Type CAP18", descr = "Circulation type class (18 types)"),
+  list(name = "CAP27", title = "Circulation Type CAP27", descr = "Circulation type class (27 types)"),
+  list(name = "GWT8_Z500", title = "GWT8 Z500", descr = "Großwettertyp (8 types) from Z500 field"),
+  list(name = "GWT10_SLP", title = "GWT10 SLP", descr = "Großwettertyp (10 types) from SLP field"),
+  list(name = "GWT10_Z500", title = "GWT10 Z500", descr = "Großwettertyp (10 types) from Z500 field"),
+  list(name = "GWT18_SLP", title = "GWT18 SLP", descr = "Großwettertyp (18 types) from SLP field"),
+  list(name = "GWT18_Z500", title = "GWT18 Z500", descr = "Großwettertyp (18 types) from Z500 field"),
+  list(name = "GWT26_SLP", title = "GWT26 SLP", descr = "Großwettertyp (26 types) from SLP field"),
+  list(name = "GWT26_Z500", title = "GWT26 Z500", descr = "Großwettertyp (26 types) from Z500 field")
 )
 
-for(var in variables) {
+for(var in variables_fact) {
   var_name <- var$name
   var_title <- var$title
   
   # One-way ANOVA
-  formula_str <- paste("UHI_night ~", var_name)
+  formula_str <- paste("UHI ~", var_name)
   anova_result <- aov(as.formula(formula_str), data = meteo_all)
   summary(anova_result)
   eta2 <- etaSquared(anova_result)
@@ -172,14 +200,14 @@ for(var in variables) {
     group_by(!!sym(var_name)) |>
     summarise(
       n = n(),
-      max_y = max(UHI_night, na.rm = TRUE),
+      max_y = max(UHI, na.rm = TRUE),
       .groups = "drop"
     ) |>
     mutate(label_y = max_y + 0.15)  # small buffer above max
   
   # Plot
-  p <- ggplot(meteo_all, aes(x = !!sym(var_name), y = UHI_night)) +
-    geom_boxplot(fill = "skyblue", alpha = 0.7) +
+  p <- ggplot(meteo_all, aes(x = !!sym(var_name), y = UHI)) +
+    geom_boxplot(fill = "skyblue", alpha = 0.7, outlier.colour = "skyblue") +
     geom_text(
       data = counts,
       aes(x = !!sym(var_name), y = label_y, label = paste0("n = ", n)),
@@ -196,10 +224,9 @@ for(var in variables) {
   
   print(p)
 
-  ggsave(paste0("../figures/Variable Selection/", var_name, "_vs_UHI_all_Log.png"), plot = p,
+  ggsave(paste0("../results/Variable Selection/", var_name, "_vs_UHI.png"), plot = p,
          width = 7, height = 5.5, dpi = 300)
     rm(p, eta2, anova_result, counts)
-
 }
 
 ```
@@ -219,17 +246,17 @@ counts <- meteo_all_aggr |>
   group_by(precip_cat) |>
   summarise(
     n = n(),
-    max_y = max(UHI_night, na.rm = TRUE),
+    max_y = max(UHI, na.rm = TRUE),
     .groups = "drop"
   ) |>
   mutate(label_y = max_y + 0.15)
 
 # ANOVA
-anova_result <- aov(UHI_night ~ precip_cat, data = meteo_all_aggr)
+anova_result <- aov(UHI ~ precip_cat, data = meteo_all_aggr)
 eta2 <- etaSquared(anova_result)
 
 # Plot
-ggplot(meteo_all_aggr, aes(x = precip_cat, y = UHI_night)) +
+ggplot(meteo_all_aggr, aes(x = precip_cat, y = UHI)) +
   geom_boxplot() +
   geom_text(
     data = counts,
@@ -245,7 +272,7 @@ ggplot(meteo_all_aggr, aes(x = precip_cat, y = UHI_night)) +
   ) +
   theme_classic()
 
-ggsave("../figures/Variable Selection/precip_cat_vs_UHI.png", plot = p, 
+ggsave("../results/Variable Selection/precip_cat_vs_UHI.png", 
        width = 5, height = 5.5, dpi = 300)
 ```
 
@@ -259,20 +286,23 @@ We are going to test different algorithms to select the best variables for our m
 
 ```{r}
 meteo_all <- meteo_all |>
-  filter(!is.na(UHI_night))
+  filter(!is.na(UHI))
 predictors <- meteo_all |>
   select(
-    -X, -time, -Log_NR, -UHI_night, -NORD_CHTOPO, -OST_CHTOPO, -LV_03_E, -LV_03_N
-  )
+    -time, -Log_NR, -NORD_CHTOPO, -OST_CHTOPO, -LV_03_E, -LV_03_N, -Location,
+    -daynight, -air_temp_LCD, -UHI_LCD, -UHI,
+  ) |>
+  # remove all variables that have "_5d" in their name
+  select(-contains("_5d")) 
+  
 ```
 
 
 ## Boruta
 ```{r}
- 
 # run the algorithm
 bor <- Boruta::Boruta(
-    y = meteo_all$UHI_night, 
+    y = meteo_all$UHI, 
     x = predictors,
     maxRuns = 30, # Number of iterations. Set to 30 or lower if it takes too long
     num.threads = parallel::detectCores()-1)

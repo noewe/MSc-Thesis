@@ -49,8 +49,8 @@ saveRDS(MeteoCH_data, "../data/IDAWEB/MeteoCH_Thun.rds")
 # Extract station information from geospatial layers and join to metadata
 ```{r}
 # read metadata
-meta <- read.csv("../data/Metadata/metadata_Thun.csv")
-
+meta <- read.csv("../data/Metadata/metadata_Thun.csv",
+                 fileEncoding = "latin1")
 # read land use data
 tiff_names <- list.files("../data/Geodata/LULCTopo_Thun/")
 print(tiff_names)
@@ -155,12 +155,14 @@ Load the Thun Network data
 #   mutate(time = with_tz(time, tzone = "Europe/Zurich"),
 #          timeshift = with_tz(timeshift, tzone = "Europe/Zurich")) #should start at 2024-05-01 02:00
 
-Thun_Network_data_hourly <- read.csv("../data/Thun Messnetz 2024/Thun_hourly_summary_2024-05-01_2024-10-30.csv") |>
+Thun_Network_data_hourly <- read.csv("../data/Thun Messnetz 2024/Thun_hourly_summary_2024-05-01_2024-10-30.csv",
+                                     fileEncoding = "latin1") |>   # Handles ä, ö, ü, ß etc.
   mutate(time_hour = as.POSIXct(time_hour, format = "%Y-%m-%dT%H:%M:%OS", tz="UTC")) |>
   mutate(time_hour = with_tz(time_hour, tzone = "Europe/Zurich")) |> #should start at 2024-05-01 02:00
   rename(time = time_hour)
 
-Thun_Network_data_daily <- read.csv("../data/Thun Messnetz 2024/Thun_daily_summary_2024-05-01_2024-10-30.csv") |>
+Thun_Network_data_daily <- read.csv("../data/Thun Messnetz 2024/Thun_daily_summary_2024-05-01_2024-10-30.csv",
+                                     fileEncoding = "latin1") |>   # Handles ä, ö, ü, ß etc.
   mutate(time = as.POSIXct(time, format = "%Y-%m-%dT%H:%M:%OS", tz="UTC")) |>
   mutate(time = with_tz(time, tzone = "Europe/Zurich")) #should start at 2024-05-01 02:00
 ```

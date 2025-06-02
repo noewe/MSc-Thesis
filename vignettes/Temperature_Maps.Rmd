@@ -19,9 +19,13 @@ This script produces a heatmap and associated statistics from a model.
 # Create Meteo Tiffs
 ```{r}
 date <- "2024-08-23" # night with highest mean UHI: 3.13 K
-date <- "2024-07-27"# night with average mean UHI: 1.42 K
+date <- "2024-07-27"# night with average mean UHI: 1.42 K ## not a good day bc of missing data at a logger
 date <- "2024-09-26"# night with lowest mean UHI: -0.97 K
-dates = c("2024-08-23", "2024-07-27", "2024-09-26") #highest UHI, average UHI, lowest UHI
+date <- "2024-08-11" # night with average UHI: 1.54 K
+date <- "2024-08-13" # night with low UHI: 0.69 K
+
+source("../R/map_helpers.R")
+dates = c("2024-08-23", "2024-08-11", "2024-08-13", "2024-09-26") #highest UHI, average UHI, lowest UHI
 
 # Example usage
 for (date in dates) {
@@ -89,5 +93,19 @@ map <- predict_temperature_map(
   output_path = "../results/models/test/"
 )
 
+```
+
+```{r}
+meteo_predictors_daily <- readRDS("../data/final_predictors/Meteo_predictors_daily.rds") |>
+   filter(daynight == "n") |>
+  left_join(daily_means, by = "time")
+
+saveRDS(meteo_predictors_daily, "../data/final_predictors/Meteo_predictors_night.rds")
+write_csv(meteo_predictors_daily, "../data/final_predictors/Meteo_predictors_night.csv")
+
+test_days <- meteo_predictors_daily |>
+  filter(time == "2024-08-23 02:00:00" | time == "2024-08-11 02:00:00" | 
+           time == "2024-08-13 02:00:00" | time == "2024-09-26 02:00:00") |>
+  filter(daynight == "n")
 ```
 
