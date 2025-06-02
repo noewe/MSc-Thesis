@@ -290,7 +290,7 @@ meteo_all <- meteo_all |>
 predictors <- meteo_all |>
   select(
     -time, -Log_NR, -NORD_CHTOPO, -OST_CHTOPO, -LV_03_E, -LV_03_N, -Location,
-    -daynight, -air_temp_LCD, -UHI_LCD, -UHI,
+    -daynight, -air_temp_LCD, -UHI_LCD, -UHI, -LCZ, -LCZ_mixed, -LU_3, -LU_7
   ) |>
   # remove all variables that have "_5d" in their name
   select(-contains("_5d")) 
@@ -312,6 +312,8 @@ df_bor <- Boruta::attStats(bor) |>
   tibble::rownames_to_column() |> 
   dplyr::arrange(dplyr::desc(meanImp))
 
+write_csv(df_bor, "../results/Variable Selection/Boruta_results.csv")
+
 # plot the importance result  
 ggplot2::ggplot(ggplot2::aes(x = reorder(rowname, meanImp), 
                              y = meanImp,
@@ -325,5 +327,7 @@ ggplot2::ggplot(ggplot2::aes(x = reorder(rowname, meanImp),
     title = "Variable importance based on Boruta") +
   ggplot2::theme_classic() +
   ggplot2::coord_flip()
-ggsave("../figures/Variable Selection/Boruta.png", width = 6, height = 14, dpi = 300)
+ggsave("../results/Variable Selection/Boruta.png", width = 6, height = 20, dpi = 300)
+
+#start: 13:47
 ```

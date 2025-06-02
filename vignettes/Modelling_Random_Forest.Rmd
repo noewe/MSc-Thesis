@@ -1,0 +1,87 @@
+---
+title: "Modelling_Random_Forest"
+author: 'Noémie Wellinger'
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+source("../R/load_packages.R")
+load_packages(c("caret", "dplyr", "ggplot2", "readr", "tidyr", "caret", "recipes", "lubridate"))
+
+```
+
+```{r}
+# Data loading and cleaning
+source("R/eval_model.R")
+```
+
+```{r}
+Masterfile <- readRDS("../data/final_predictors/all_data_daily.rds") 
+
+Masterfile <- Masterfile |>
+  filter(daynight == "n") |> # only night data)
+  # drop rows where air_temp_LCD, UHI or UHI_LCD is NA
+  filter(!is.na(air_temp_LCD) | !is.na(UHI) | !is.na(UHI_LCD)) |>
+  mutate(CAP9 = as.factor(CAP9),
+         CAP18 = as.factor(CAP18),
+         CAP27 = as.factor(CAP27),
+         GWT8_Z500 = as.factor(GWT8_Z500),
+         GWT10_SLP = as.factor(GWT10_SLP),
+         GWT10_Z500 = as.factor(GWT10_Z500),
+         GWT18_SLP = as.factor(GWT18_SLP),
+         GWT18_Z500 = as.factor(GWT18_Z500),
+         GWT26_SLP = as.factor(GWT26_SLP),
+         GWT26_Z500 = as.factor(GWT26_Z500)
+  )
+
+set.seed(123)  # for reproducibility
+split <- rsample::initial_split(Masterfile, prop = 0.8, strata = "UHI")
+Masterfile_train <- rsample::training(split)
+Masterfile_test <- rsample::testing(split)
+
+# Choose for which variables you want a density plot
+vars_to_plot <- c("UHI", "air_temp", "rad", "wind_vel", "precip", "precip_boolean", "water_temp", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500")
+
+plot_data <- Masterfile_train |> 
+  mutate(split = "train") |> 
+  bind_rows(Masterfile_test |> mutate(split = "test")) |> 
+  pivot_longer(cols = all_of(vars_to_plot), names_to = "variable", values_to = "value")
+
+plot_data |> 
+  ggplot(aes(x = value, y = ..density.., color = split)) +
+  geom_density() +
+  facet_wrap(~variable, scales = "free")
+```
+
+```{r}
+
+# Data splitting
+set.seed(123)  # for reproducibility
+split <- rsample::initial_split(daily_fluxes, prop = 0.7, strata = "VPD_F")
+ddf_train <- rsample::training(split)
+ddf_test <- rsample::testing(split)
+
+# The same model formulation is in the previous chapter
+pp <- recipes::recipe(GPP_NT_VUT_REF ~ TA_F + SW_IN_F + LW_IN_F + VPD_F + P_F + WS_F, 
+                      data = Masterfile_train) |> 
+  recipes::step_center(recipes::all_numeric(), -recipes::all_outcomes()) |>
+  recipes::step_scale(recipes::all_numeric(), -recipes::all_outcomes())
+
+mod <- train(
+  pp, 
+  data = Masterfile_train %>% 
+    drop_na(), 
+  method = "ranger",
+  trControl = trainControl(method = "cv", number = 5, savePredictions = "final"),
+  tuneGrid = expand.grid( .mtry = floor(6 / 3),
+                          .min.node.size = 5,
+                          .splitrule = "variance"),
+  metric = "RMSE",
+  replace = FALSE,
+  sample.fraction = 0.5,
+  num.trees = 2000,           # high number ok since no hperparam tuning
+  seed = 1982                # for reproducibility
+)
+```
+
