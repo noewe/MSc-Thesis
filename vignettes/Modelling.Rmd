@@ -48,7 +48,7 @@ ggplot(QM_TPI_500_Model, mapping=aes(x=UHI_est, y= Diff_Zoll)) +
   geom_point(alpha = 0.2) +
   labs(x="UHI intensity predicted [K]", 
        y="UHI intensity measured [K]", 
-       title="Interaction model TPI Bern", 
+       title="LUR_INT_BE", 
               subtitle = substitute(
           R^2 == r2 ~ "; RMSE =" ~ rmse ~ "K" ~ "; MBE =" ~ mbe ~ "K",
           list(r2 = R2, rmse = RMSE, mbe = MBE)
@@ -86,7 +86,7 @@ Masterfile <- Masterfile |>
          SW = wind_S,
          NR = precip_boolean,
          GS = rad_1d,
-         VH_150 = VH_175,
+         VH_150,
          time) |>
   filter(time<="2024-09-01" & time >= "2024-06-01") |> # filter for JJA
   drop_na()
@@ -108,7 +108,7 @@ ggplot(QM_TPI_500_Model, mapping=aes(x=UHI_est, y= UHI)) +
   geom_point(alpha = 0.2) +
     labs(x="UHI intensity predicted [K]", 
        y="UHI intensity measured [K]", 
-       title="Interaction model TPI Thun (calibrated on Bern)", 
+       title= "LUR_INT_BE", #"Interaction model TPI Thun (calibrated on Bern)", 
        subtitle = substitute(
           R^2 == r2 ~ "; RMSE =" ~ rmse ~ "K" ~ "; MBE =" ~ mbe ~ "K",
           list(r2 = R2, rmse = RMSE, mbe = MBE)
@@ -171,7 +171,7 @@ source("../R/map_helpers.R")
     mutate(time = with_tz(time, tzone = "Europe/Zurich")) #should start at 2024-05-01 02:00
   
 # Dates to predict the models
-dates = c("2024-08-23","2024-08-11", "2024-08-13", "2024-09-26") #highest UHI, average UHI, lowest UHI 
+dates = c("2024-09-05", "2024-08-14", "2024-08-27", "2024-08-29") #highest UHI, average UHI, lowest UHI 
 ```
 
 ```{r}
@@ -206,26 +206,29 @@ meteo_predictors_daily <- readRDS("../data/final_predictors/Meteo_predictors_dai
 # 2. Calibrate the model on Thun
 ```{r}
 source("../R/LUR_int_model.R")
+source("../R/model_helpers.R")
+source("../R/map_helpers.R")
 result <- LUR_int_model(
   train_data = Masterfile_train,
   test_data = Masterfile_test,
   target = "UHI",
   target_name = "mean nighttime UHI",
   met_vars = c("wind_S", "precip_boolean", "rad_1d"),
-  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_175"),
-  model_type = "LUR INT TPI -> UHI night (Ref = MeteoCH)",
-  model_type_short = "lur_int_tpi_UHI_night",
+  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_150"),
+  model_type = "LUR_INT_TH",
+  model_type_short = "LUR_INT_TH",
   plot_lim = c(-4.5,6)
 )
-model_type_short = "lur_int_tpi_UHI_night"
+model_type_short = "LUR_INT_TH"
 for (date in dates) {
   predict_temperature_map(
     model = result$model,
-    date = date,
+    date = "2024-09-05",
     daynight = "n",
     meteo_dir = "../data/Geodata/Meteo_daily",
-    lulc_dir = "../data/Geodata/LULCTopo_Thun",
-    output_path = "../results/models/lur_int_tpi_UHI_night/"
+    lulc_dir = "../data/Geodata/LULCTopo_Gauss",
+    output_path = "../results/models/LUR_INT_TH/",
+    uhi_range = c(-1.3, 5)
   )
 }
 ```
@@ -251,7 +254,7 @@ predict_temperature_map(
   date = "2024-08-23",
   daynight = "n",
   meteo_dir = "../data/Geodata/Meteo_daily",
-  lulc_dir = "../data/Geodata/LULCTopo_Thun",
+    lulc_dir = "../data/Geodata/LULCTopo_Gauss",
   output_path = "../results/models/lur_int_tpi_ta_night/"
 )
 
@@ -289,9 +292,9 @@ result <- LUR_int_model(
   target = "UHI",
   target_name = "mean nighttime UHI",
   met_vars = c("wind_S", "precip_boolean", "rad_1d", "air_temp"),
-  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_175"),
-  model_type = "LUR INT TPI with TA -> UHI night",
-  model_type_short = "lur_int_tpi_UHI_night_ta",
+  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_150"),
+  model_type = "LUR_INT_TH+TA",
+  model_type_short = "LUR_INT_TH+TA",
   plot_lim = c(-4.5,6)
 )
 for (date in dates) {
@@ -300,8 +303,9 @@ for (date in dates) {
     date = date,
     daynight = "n",
     meteo_dir = "../data/Geodata/Meteo_daily",
-    lulc_dir = "../data/Geodata/LULCTopo_Thun",
-    output_path = "../results/models/lur_int_tpi_UHI_night_ta/"
+    lulc_dir = "../data/Geodata/LULCTopo_Gauss",
+    output_path = "../results/models/LUR_INT_TH+TA/",
+    uhi_range = c(-1.3, 5)
   )
 }
 
@@ -312,9 +316,9 @@ result <- LUR_int_model(
   target = "UHI",
   target_name = "mean nighttime UHI",
   met_vars = c("wind_S", "precip_boolean", "rad_1d", "GWT18_SLP"),
-  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_175"),
-  model_type = "LUR INT TPI with GWT18_SLP -> UHI night",
-  model_type_short = "lur_int_tpi_UHI_night_GWT_18_SLP",
+  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_150"),
+  model_type = "LUR_INT_TH+GWT18",
+  model_type_short = "LUR_INT_TH+GWT18",
   plot_lim = c(-4.5,6)
 )
 for (date in dates) {
@@ -323,8 +327,9 @@ for (date in dates) {
     date = date,
     daynight = "n",
     meteo_dir = "../data/Geodata/Meteo_daily",
-    lulc_dir = "../data/Geodata/LULCTopo_Thun",
-    output_path = "../results/models/lur_int_tpi_UHI_night_GWT_18_SLP/"
+    lulc_dir = "../data/Geodata/LULCTopo_Gauss",
+    output_path = "../results/models/LUR_INT_TH+GWT18/",
+    uhi_range = c(-1.3, 5)
   )
 }
 
@@ -335,9 +340,9 @@ result <- LUR_int_model(
   target = "UHI",
   target_name = "mean nighttime UHI",
   met_vars = c("wind_S", "precip_boolean", "rad_1d", "CAP27"),
-  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_175"),
-  model_type = "LUR INT TPI with CAP27 -> UHI night",
-  model_type_short = "lur_int_tpi_UHI_night_CAP27",
+  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_150"),
+  model_type = "LUR_INT_TH+CAP27",
+  model_type_short = "LUR_INT_TH+CAP27",
   plot_lim = c(-4.5,6)
 )
 for (date in dates) {
@@ -346,8 +351,9 @@ for (date in dates) {
     date = date,
     daynight = "n",
     meteo_dir = "../data/Geodata/Meteo_daily",
-    lulc_dir = "../data/Geodata/LULCTopo_Thun",
-    output_path = "../results/models/lur_int_tpi_UHI_night_CAP27/"
+    lulc_dir = "../data/Geodata/LULCTopo_Gauss",
+    output_path = "../results/models/LUR_INT_TH+CAP27/",
+    uhi_range = c(-1.3, 5)
   )
 }
 
@@ -358,9 +364,9 @@ result <- LUR_int_model(
   target = "UHI",
   target_name = "mean nighttime UHI",
   met_vars = c("wind_S", "precip_boolean", "rad_1d", "water_temp_1d"),
-  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_175"),
-  model_type = "LUR INT TPI with water_temp_1d -> UHI night",
-  model_type_short = "lur_int_tpi_UHI_night_water_temp",
+  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_150", "OS_wa_150"),
+  model_type = "LUR_INT_TH+WT",
+  model_type_short =  "LUR_INT_TH+WT",
   plot_lim = c(-4.5,6)
 )
 for (date in dates) {
@@ -369,8 +375,9 @@ for (date in dates) {
     date = date,
     daynight = "n",
     meteo_dir = "../data/Geodata/Meteo_daily",
-    lulc_dir = "../data/Geodata/LULCTopo_Thun",
-    output_path = "../results/models/lur_int_tpi_UHI_night_water_temp/"
+    lulc_dir = "../data/Geodata/LULCTopo_Gauss",
+    output_path = "../results/models/LUR_INT_TH+WT/",
+    uhi_range = c(-1.3, 5)
   )
 }
 
@@ -381,9 +388,9 @@ result <- LUR_int_model(
   target = "UHI",
   target_name = "mean nighttime UHI",
   met_vars = c("wind_S", "precip_boolean", "rad_1d", "water_temp_surface_1d"),
-  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_175"),
-  model_type = "LUR INT TPI with water_temp_surface_1d -> UHI night",
-  model_type_short = "lur_int_tpi_UHI_night_water_temp_surface",
+  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_150", "OS_wa_150"),
+  model_type = "LUR_INT_TH+WST",
+  model_type_short = "LUR_INT_TH+WST",
   plot_lim = c(-4.5,6)
 )
 for (date in dates) {
@@ -392,66 +399,66 @@ for (date in dates) {
     date = date,
     daynight = "n",
     meteo_dir = "../data/Geodata/Meteo_daily",
-    lulc_dir = "../data/Geodata/LULCTopo_Thun",
-    output_path = "../results/models/lur_int_tpi_UHI_night_water_temp_surface/"
+    lulc_dir = "../data/Geodata/LULCTopo_Gauss",
+    output_path = "../results/models/LUR_INT_TH+WST/",
+    uhi_range = c(-1.3, 5)
   )
 }
-```
-
-
-# Model with 3 additional predictors
-```{r}
-source("../R/LUR_int_model.R")
-source("../R/map_helpers.R")
 
 result <- LUR_int_model(
   train_data = Masterfile_train,
   test_data = Masterfile_test,
   target = "UHI",
   target_name = "mean nighttime UHI",
-  met_vars = c("wind_S", "precip_boolean", "rad_1d", "water_temp_1d", "GWT18_SLP", "air_temp"),
-  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_175"),
-  model_type = "LUR INT TPI with WT, GWT18, TA -> UHI night",
-  model_type_short = "lur_int_tpi_UHI_night_water_ta_gwt",
+  met_vars = c("wind_S", "precip_boolean", "rad_1d", "humidity_1d"),
+  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_150"),
+  model_type = "LUR_INT_TH+RH",
+  model_type_short = "LUR_INT_TH+RH",
   plot_lim = c(-4.5,6)
 )
-model_type_short = "lur_int_tpi_UHI_night_water_ta_gwt"
 for (date in dates) {
   predict_temperature_map(
     model = result$model,
     date = date,
     daynight = "n",
     meteo_dir = "../data/Geodata/Meteo_daily",
-    lulc_dir = "../data/Geodata/LULCTopo_Thun",
-    output_path = "../results/models/lur_int_tpi_UHI_night_water_ta_gwt/"
+    lulc_dir = "../data/Geodata/LULCTopo_Gauss",
+    output_path = "../results/models/LUR_INT_TH+RH/",
+    uhi_range = c(-1.3, 5)
   )
 }
 ```
+
+
+
 # Model with 5 additional predictors
 ```{r}
 source("../R/LUR_int_model.R")
 source("../R/map_helpers.R")
+source("../R/model_helpers.R")
 
+model_type_short = "LUR_INT_TH+"
 result <- LUR_int_model(
   train_data = Masterfile_train,
   test_data = Masterfile_test,
   target = "UHI",
   target_name = "mean nighttime UHI",
   met_vars = c("wind_vel", "precip_boolean", "rad_1d", "water_temp_1d", "CAP27", "air_temp", "humidity_1d"),
-  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_175"),
-  model_type = "LUR INT TPI with TA, TW, CAP27, RH -> UHI night",
-  model_type_short = "lur_int_tpi_UHI_night_additional",
+  spat_vars = c("AD", "OS_GA_25", "LC_B_250", "OS_AC_750", "OS_FO_1000", "TPI_500", "VH_150", "OS_wa_150"),
+  model_type = model_type_short,
+  model_type_short = model_type_short,
   plot_lim = c(-4.5,6)
 )
-model_type_short = "lur_int_tpi_UHI_night_additional"
+
 for (date in dates) {
   predict_temperature_map(
     model = result$model,
     date = date,
     daynight = "n",
     meteo_dir = "../data/Geodata/Meteo_daily",
-    lulc_dir = "../data/Geodata/LULCTopo_Thun",
-    output_path = "../results/models/lur_int_tpi_UHI_night_additional/"
+    lulc_dir = "../data/Geodata/LULCTopo_Gauss",
+    output_path = paste0("../results/models/",model_type_short,"/"),
+    uhi_range = c(-1.3, 5)
   )
 }
 
@@ -464,6 +471,7 @@ library(dplyr)
 coef_df <- broom::tidy(result$model) |> 
   filter(term != "(Intercept)") |>  # Remove intercept to focus on predictors
   mutate(significant = p.value < 0.05)
+write.csv(coef_df, paste0("../results/models/", model_type_short, "/coef_df.csv"), row.names = FALSE)
 
 # Plot
 ggplot(coef_df, aes(x = estimate, y = reorder(term, estimate), color = significant)) +
@@ -478,6 +486,47 @@ ggplot(coef_df, aes(x = estimate, y = reorder(term, estimate), color = significa
   ) +
   theme_minimal()
 ```
+
+# Model with predictors from Boruta variable selection
+```{r}
+preds_VS <- read.csv("../results/Variable Selection/Boruta_results_adapted.csv") 
+
+source("../R/LUR_int_model.R")
+source("../R/map_helpers.R")
+source("../R/model_helpers.R")
+
+result <- LUR_int_model(
+  train_data = Masterfile_train,
+  test_data = Masterfile_test,
+  target = "UHI",
+  target_name = "mean nighttime UHI",
+  met_vars =  c(
+  "rad_1d", "precip_1d", "wind_vel", "wind_dir_class","humidity_1d",
+  "wind_vel_lake_3d", "wind_dir_lake_3d_class", "water_temp_surface_3d",
+  "air_temp", "GWT18_SLP", "pressure_3d"),
+  spat_vars = c(
+  "BH_NA_500", "NDVI_250", "AD", "OS_AC_1000", "OS_SE_1000", "LC_B_1000"), 
+  model_type = "LUR_INT_TH_Bor_red",
+  model_type_short = "LUR_INT_TH_Bor_red",
+  plot_lim = c(-4.5,6)
+)
+
+model_type_short = "LUR_INT_TH_Bor_red"
+
+for (date in dates) {
+  predict_temperature_map(
+    model = result$model,
+    date = date,
+    daynight = "n",
+    meteo_dir = "../data/Geodata/Meteo_daily",
+    lulc_dir = "../data/Geodata/LULCTopo_Gauss",
+    output_path = "../results/models/LUR_INT_TH_Bor_red/",
+    uhi_range = c(-1.3, 5)
+  )
+}
+```
+
+
 
 ```{r}
 # plot predicted UHI and wind speed

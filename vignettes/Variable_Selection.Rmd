@@ -293,7 +293,9 @@ predictors <- meteo_all |>
     -daynight, -air_temp_LCD, -UHI_LCD, -UHI, -LCZ, -LCZ_mixed, -LU_3, -LU_7
   ) |>
   # remove all variables that have "_5d" in their name
-  select(-contains("_5d")) 
+  select(-contains("_5d")) |>
+  # for variable names that start with "BH_NA", replace NA values with 0
+  mutate(across(starts_with("BH_NA"), ~ replace_na(., 0)))
   
 ```
 
@@ -301,24 +303,24 @@ predictors <- meteo_all |>
 ## Boruta
 ```{r}
 # run the algorithm
-bor <- Boruta::Boruta(
+bor2 <- Boruta::Boruta(
     y = meteo_all$UHI, 
     x = predictors,
     maxRuns = 30, # Number of iterations. Set to 30 or lower if it takes too long
     num.threads = parallel::detectCores()-1)
 
 # obtain results: a data frame with all variables, ordered by their importance
-df_bor <- Boruta::attStats(bor) |> 
+df_bor2 <- Boruta::attStats(bor) |> 
   tibble::rownames_to_column() |> 
   dplyr::arrange(dplyr::desc(meanImp))
 
-write_csv(df_bor, "../results/Variable Selection/Boruta_results.csv")
+write_csv(df_bor2, "../results/Variable Selection/Boruta_results_2.csv")
 
 # plot the importance result  
 ggplot2::ggplot(ggplot2::aes(x = reorder(rowname, meanImp), 
                              y = meanImp,
                              fill = decision), 
-                data = df_bor) +
+                data = df_bor2) +
   ggplot2::geom_bar(stat = "identity", width = 0.75) + 
   ggplot2::scale_fill_manual(values = c("grey30", "tomato", "grey70")) + 
   ggplot2::labs(
@@ -327,7 +329,7 @@ ggplot2::ggplot(ggplot2::aes(x = reorder(rowname, meanImp),
     title = "Variable importance based on Boruta") +
   ggplot2::theme_classic() +
   ggplot2::coord_flip()
-ggsave("../results/Variable Selection/Boruta.png", width = 6, height = 20, dpi = 300)
+ggsave("../results/Variable Selection/Boruta_2.png", width = 6, height = 20, dpi = 300)
 
 #start: 13:47
 ```

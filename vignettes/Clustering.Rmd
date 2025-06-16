@@ -11,169 +11,24 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(lubridate)
+library(leaflet)
+library(viridisLite)  # For viridis color palette
+library(RColorBrewer)
 ```
 
 ```{r}
 # load data
-all_data_hourly <- readRDS("../data/final_predictors/all_data_hourly.rds")
+all_data_hourly <- readRDS("../data/final_predictors/all_data_hourly.rds") 
 all_data_daily_night <- readRDS("../data/final_predictors/all_data_daily.rds") |>
   filter(daynight == "n") # only night data
 
 # Setup
 cluster_variable <- "UHI"
-timestep <- "hourly"
 ```
 
 ```{r}
 # Select data
 data_to_cluster <- all_data_hourly |>
-  select(time, Log_NR, UHI) |>
-   pivot_wider(names_from = Log_NR, values_from = UHI)
-
-# Set time_hour as row names
-data_to_cluster <- as.data.frame(data_to_cluster)
-rownames(data_to_cluster) <- data_to_cluster$time
-data_to_cluster$time <- NULL
-#remove all rows that contain NA
-data_to_cluster <- data_to_cluster[complete.cases(data_to_cluster),]
-
-# Convert to matrix
-matrix_to_cluster <- as.matrix(data_to_cluster)
-
-# Ensure row names are preserved
-rownames(matrix_to_cluster) <- rownames(data_to_cluster)
-```
-
-
-```{r}
-# Define the number of clusters (tune this parameter)
-num_row_clusters <- 6  # Time periods 
-num_col_clusters <- 7  # Stations
-
-set.seed(124)  # For reproducibility
-# Run co-clustering
-result <- coclusterContinuous(matrix_to_cluster, nbcocluster = c(num_row_clusters, num_col_clusters))
-plot(result)
-# save the plot
-ggsave(paste0("../results/Clusters/CoCluster_", timestep, "_", num_col_clusters, "S_", num_row_clusters, "T.png"), cocluster_plot)
-```
-
-
-
-
-```{r}
-print(result@rowclass)  # Time clusters
-print(result@colclass)  # Station clusters
-```
-
-```{r}
-# Attach the cluster classes to the original data
-# Convert to data frames for merging
-
-# Extract row (time) and column (station) cluster assignments
-time_cluster_df <- data.frame(time = rownames(matrix_to_cluster), time_cluster = result@rowclass)
-time_cluster_df$time <- as.POSIXct(time_cluster_df$time, format = "%Y-%m-%d %H:%M:%S", tz = "Europe/Zurich")
-station_cluster_df <- data.frame(Log_NR = colnames(matrix_to_cluster), station_cluster = result@colclass)
-
-# Merge time clusters with original data
-all_data_hourly_clusters <- all_data_hourly |>
-  left_join(time_cluster_df, by = "time") |>
-  left_join(station_cluster_df, by = "Log_NR")
-```
-
-Mapping
-```{r}
-# group by time_cluster and Log_NR and summarize
-time_clusters_UHI <- all_data_hourly_clusters %>%
-  group_by(time_cluster, Log_NR) %>%
-  summarize(UHI = mean(UHI, na.rm = TRUE)) |>
-  left_join(meta, by = "Log_NR")
-```
-
-```{r}
-# for all the values of time_cluster, plot the UHI_mean
-for(i in 0:5){
-  p <- time_clusters_UHI |>
-    filter(time_cluster == i) |>
-    ggplot(aes(x = OST_CHTOPO, y = NORD_CHTOPO, fill = UHI)) +
-      geom_point(      
-        color = "black",
-        shape = 21,
-        size = 4,
-        stroke = 0.4) +
-      labs(title = paste("Hourly Time Cluster N°", i), 
-           fill = "UHI",
-           x = "Longitude", y = "Latitude") +
-      theme(legend.position = "bottom") +
-      # Use color palette RdYlBu with midpoint at 0
-      #scale_color_gradient2(low = "blue", mid = "beige", high = "red", midpoint = 0, limits= c(-5, 5)) +
-      scale_fill_viridis_c(name = "UHI [K]", limits= c(-5, 5)) +
-      coord_equal(expand = FALSE) +
-      theme_bw()
-  print(p)
-  
-  # save the plot
-  ggsave(paste0("../results/Clusters/TimeCluster_", timestep, "_", i, cluster_variable, ".png"), p)
-}
-```
-
-```{r}
-# custom color palette for cluster values
-cluster_colors <- c('#66c2a5','#fc8d62','#8da0cb','#e78ac3','#a6d854','#ffd92f')
-
-# Look at the distribution of UHI_mean for each time cluster
-time_clusters_UHI |>
-  ggplot(aes(x = UHI, fill = factor(time_cluster))) +
-  geom_density(alpha = 0.5) +
-  theme_minimal() +
-  labs(title = "Distribution of UHI_mean by Time Cluster", fill = "Time Cluster") +
-  theme(legend.position = "bottom") +
-  scale_fill_manual(values = cluster_colors)
-
-```
-
-```{r}
-# Plot the hour of day (y axis) and date (y axis) for each data point in data_long_hourly_clusters
-all_data_hourly_clusters |>
-  mutate(date = as.Date(time),
-         hour = hour(time)) |>
-  ggplot(aes(x = date, y = hour, fill = factor(time_cluster))) +
-  geom_tile() +
-  theme_minimal() +
-  labs(title = paste(cluster_variable, "Time Cluster Assignments"), fill = "Time Cluster") +
-  scale_fill_manual(values = cluster_colors)
-
-# same plot just for months August and September
-all_data_hourly_clusters |>
-  mutate(date = as.Date(time),
-         hour = hour(time)) |>
-  filter(date >= "2024-08-01" & date <= "2024-09-30") |>
-  ggplot() +
-  geom_tile(aes(x = date, y = hour, fill = factor(time_cluster))) +
-  theme_minimal() +
-  labs(title = paste(cluster_variable, "Time Cluster Assignments (August and September)"), fill = "Time Cluster") +
-  theme(legend.position = "bottom") +
-  scale_fill_manual(values = cluster_colors)
-  # plot a line with the average temperature for each day from daily_summary
-  #geom_line(data = daily_summary, aes(x = time_day, y = T_mean_day, color = "red"), size = 1) 
-
-```
-
-
-2. Night mean clusters
-```{r}
-# load data
-all_data_daily_night <- readRDS("../data/final_predictors/all_data_daily.rds") |>
-  filter(daynight == "n") # only night data
-
-# Setup
-cluster_variable <- "UHI"
-timestep <- "night"
-```
-
-```{r}
-# Select data
-data_to_cluster <- all_data_daily_night |>
   select(time, Log_NR, UHI) |>
    pivot_wider(names_from = Log_NR, values_from = UHI)
 
@@ -203,6 +58,7 @@ result <- coclusterContinuous(matrix_to_cluster, nbcocluster = c(num_row_cluster
 plot(result)
 # save the plot
 ggsave(paste0("../results/Clusters/CoCluster_", timestep, "_", num_col_clusters, "S_", num_row_clusters, "T.png"), cocluster_plot)
+summary(result)
 ```
 
 
@@ -219,67 +75,183 @@ print(result@colclass)  # Station clusters
 
 # Extract row (time) and column (station) cluster assignments
 time_cluster_df <- data.frame(time = rownames(matrix_to_cluster), time_cluster = result@rowclass)
-time_cluster_df$time <- as.POSIXct(time_cluster_df$time, format = "%Y-%m-%d", tz = "Europe/Zurich")
+time_cluster_df$time <- as.POSIXct(time_cluster_df$time, format = "%Y-%m-%d %H:%M:%S", tz = "Europe/Zurich")
 station_cluster_df <- data.frame(Log_NR = colnames(matrix_to_cluster), station_cluster = result@colclass)
 
 # Merge time clusters with original data
-all_data_daily_night_clusters <- all_data_daily_night |>
+all_data_hourly_clusters <- all_data_hourly |>
   left_join(time_cluster_df, by = "time") |>
   left_join(station_cluster_df, by = "Log_NR")
-```
 
-Mapping
-```{r}
+# Prepare for Mapping
 # group by time_cluster and Log_NR and summarize
-time_clusters_UHI <- all_data_daily_night_clusters %>%
+time_clusters_UHI <- all_data_hourly_clusters %>%
   group_by(time_cluster, Log_NR) %>%
   summarize(UHI = mean(UHI, na.rm = TRUE)) |>
   left_join(meta, by = "Log_NR")
 ```
 
-```{r}
-# for all the values of time_cluster, plot the UHI_mean
-for(i in 0:5){
-  p <- time_clusters_UHI |>
-    filter(time_cluster == i) |>
-    ggplot(aes(x = OST_CHTOPO, y = NORD_CHTOPO, fill = UHI)) +
-      geom_point(      
-        color = "black",
-        shape = 21,
-        size = 4,
-        stroke = 0.4) +
-      labs(title = paste("Hourly Time Cluster N°", i), 
-           fill = "UHI",
-           x = "Longitude", y = "Latitude") +
-      theme(legend.position = "bottom") +
-      # Use color palette RdYlBu with midpoint at 0
-      #scale_color_gradient2(low = "blue", mid = "beige", high = "red", midpoint = 0, limits= c(-5, 5)) +
-      scale_fill_viridis_c(name = "UHI [K]", limits= c(-1, 5.1)) +
-      coord_equal(expand = FALSE) +
-      theme_bw()
-  print(p)
-  
-  # save the plot
-  ggsave(paste0("../results/Clusters/TimeCluster_", timestep, "_", i, cluster_variable, ".png"), p)
-}
-```
 
 ```{r}
-# custom color palette for cluster values
-cluster_colors <- c('#a6d854','#fc8d62','#8da0cb','#e78ac3','#66c2a5','#ffd92f')
+#hourly
+cluster_colors <- c('#fc8d62','#8da0cb','#a6d854','#e78ac3','#66c2a5','#ffd92f')
 
-# Look at the distribution of UHI_mean for each time cluster
-time_clusters_UHI |>
-  ggplot(aes(x = UHI, fill = factor(time_cluster))) +
-  geom_density(alpha = 0.5) +
+# Plot the hour of day (y axis) and date (y axis) for each data point in data_long_hourly_clusters
+all_data_hourly_clusters |>
+  mutate(date = as.Date(time),
+         hour = hour(time)) |>
+  ggplot(aes(x = date, y = hour, fill = factor(time_cluster))) +
+  geom_tile() +
   theme_minimal() +
-  labs(title = "Distribution of UHI_mean by Time Cluster", fill = "Time Cluster") +
-  theme(legend.position = "bottom") +
+  labs(title = paste(cluster_variable, "Time Cluster Assignments"), fill = "Time Cluster") +
   scale_fill_manual(values = cluster_colors)
 
+# same plot just for months August and September
+all_data_hourly_clusters |>
+  mutate(date = as.Date(time),
+         hour = hour(time)) |>
+  filter(date >= "2024-08-01" & date <= "2024-09-30") |>
+  ggplot() +
+  geom_tile(aes(x = date, y = hour, fill = factor(time_cluster))) +
+  theme_minimal() +
+  labs(title = paste(cluster_variable, "Time Cluster Assignments (August and September)"), fill = "Time Cluster") +
+  theme(legend.position = "bottom") +
+  scale_fill_manual(values = cluster_colors)
+  # plot a line with the average temperature for each day from daily_summary
+  #geom_line(data = daily_summary, aes(x = time_day, y = T_mean_day, color = "red"), size = 1) 
+
+ggsave(paste0("../results/Clusters/TimeCluster_timeseries", timestep, "_", cluster_variable, ".png"), width = 6, height = 4, dpi = 300)
+```
+
+# distribution of variables, hourly
+```{r}
+# map clusters for different meteorological variables
+all_data_hourly_clusters |>
+  select(time, Log_NR, UHI, time_cluster, station_cluster,
+         air_temp, humidity, wind_vel, wind_dir_class, rad_1d, pressure, precip_1d)
+
+
+# Define the variables to normalize
+vars_to_normalize <- c("air_temp", "humidity", "wind_vel", "rad_1d", "pressure", "precip_1d")
+
+# Normalize variables to 0–1 range
+normalized_data <- all_data_hourly_clusters |>
+  mutate(across(all_of(vars_to_normalize), ~ (. - min(., na.rm = TRUE)) / 
+                                            (max(., na.rm = TRUE) - min(., na.rm = TRUE)))) |>
+  select(time_cluster, all_of(vars_to_normalize)) |>
+  pivot_longer(cols = all_of(vars_to_normalize), 
+               names_to = "variable", values_to = "value") |>
+  filter(!is.na(value))
+
+# Plot
+normalized_data |>
+  mutate(time_cluster = factor(time_cluster, levels = unique(time_cluster))) |>
+  group_by(time_cluster) |>
+ggplot(aes(x = time_cluster, y = value, fill = time_cluster)) +
+  geom_boxplot(outlier.size = 0.5) +
+  facet_wrap(~variable, scales = "free_y") +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(x = "Time Cluster", y = "Normalized Value", title = "Distribution of Normalized Variables by Time Cluster") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  # arrange the time cluster in the order 0, 3, 1, 2, NA on the x axis
+  scale_x_discrete(limits = c("2", "3", "0", "1", NA)) +
+  scale_fill_manual(values = c("0" = "#fc8d62", "3" = "#e78ac3", "1" = "#8da0cb", "2" = "#a6d854"))
+
+ggsave(paste0("../results/Clusters/Normalized_Variables_by_Time_Cluster_", timestep, ".png"), width = 6, height = 4, dpi = 400)
+```
+
+
+
+
+2. Night mean clusters
+```{r}
+# load data
+all_data_daily_night <- readRDS("../data/final_predictors/all_data_daily.rds") |>
+  filter(daynight == "n") # only night data
+
+# Setup
+cluster_variable <- "UHI"
+timestep <- "night"
+
+# Select data
+data_to_cluster <- all_data_daily_night |>
+  select(time, Log_NR, UHI) |>
+   pivot_wider(names_from = Log_NR, values_from = UHI)
+
+# Set time_hour as row names
+data_to_cluster <- as.data.frame(data_to_cluster)
+rownames(data_to_cluster) <- data_to_cluster$time
+data_to_cluster$time <- NULL
+#remove all rows that contain NA
+data_to_cluster <- data_to_cluster[complete.cases(data_to_cluster),]
+
+# Convert to matrix
+matrix_to_cluster <- as.matrix(data_to_cluster)
+
+# Ensure row names are preserved
+rownames(matrix_to_cluster) <- rownames(data_to_cluster)
+```
+
+
+```{r}
+# Define the number of clusters (tune this parameter)
+num_row_clusters <- 4  # Time periods 
+num_col_clusters <- 7  # Stations
+
+set.seed(124)  # For reproducibility
+# Run co-clustering
+result <- coclusterContinuous(matrix_to_cluster, nbcocluster = c(num_row_clusters, num_col_clusters))
+plot(result)
+
+summary(result)
+plot(result, type = "distribution")
+# save as png
+#save.png(p, paste0("../results/Clusters/CoCluster_distribution_", timestep, "_", num_col_clusters, "S_", num_row_clusters, "T.png"), width = 800, height = 600)
+```
+
+
+
+
+```{r}
+print(result@rowclass)  # Time clusters
+print(result@colclass)  # Station clusters
 ```
 
 ```{r}
+# Attach the cluster classes to the original data
+# Convert to data frames for merging
+
+# Extract row (time) and column (station) cluster assignments
+time_cluster_df <- data.frame(time = rownames(matrix_to_cluster), time_cluster = as.factor(result@rowclass))
+time_cluster_df$time <- as.POSIXct(time_cluster_df$time, format = "%Y-%m-%d", tz = "Europe/Zurich")
+station_cluster_df <- data.frame(Log_NR = colnames(matrix_to_cluster), station_cluster = as.factor(result@colclass))
+
+# Merge time clusters with original data
+all_data_daily_night_clusters <- all_data_daily_night |>
+  left_join(time_cluster_df, by = "time") |>
+  left_join(station_cluster_df, by = "Log_NR")
+
+# Prepare for mapping
+# group by time_cluster and Log_NR and summarize
+time_clusters_UHI <- all_data_daily_night_clusters |>
+  group_by(time_cluster, Log_NR) |>
+  summarize(UHI = mean(UHI, na.rm = TRUE)) |>
+  left_join(meta, by = "Log_NR")
+
+station_clusters_UHI <- all_data_daily_night_clusters |>
+  group_by(Log_NR) |>
+  summarize(OST_CHTOPO = mean(OST_CHTOPO, na.rm = TRUE),
+            NORD_CHTOPO = mean(NORD_CHTOPO, na.rm = TRUE),
+            station_cluster = first(station_cluster),
+            UHI = mean(UHI, na.rm = TRUE)) 
+```
+
+# daily
+```{r}
+#daily
+cluster_colors <- c('#a6d854','#fc8d62','#8da0cb','#e78ac3','#66c2a5','#ffd92f')
+
 # Plot the hour of day (y axis) and date (y axis) for each data point in data_long_hourly_clusters
 all_data_daily_night_clusters |>
   mutate(date = as.Date(time),
@@ -303,9 +275,11 @@ all_data_daily_night_clusters |>
   scale_fill_manual(values = cluster_colors)
   # plot a line with the average temperature for each day from daily_summary
   #geom_line(data = daily_summary, aes(x = time_day, y = T_mean_day, color = "red"), size = 1) 
+ggsave(paste0("../results/Clusters/TimeCluster_timeseries", timestep, "_", cluster_variable, ".png"), width = 6, height = 4, dpi = 300)
 
 ```
 
+# Distribution of variables, daily
 ```{r}
 # map clusters for different meteorological variables
 all_data_daily_night_clusters |>
@@ -340,7 +314,288 @@ ggplot(aes(x = time_cluster, y = value, fill = time_cluster)) +
   scale_x_discrete(limits = c("0", "3", "1", "2", NA)) +
   scale_fill_manual(values = c("0" = "#a6d854", "3" = "#e78ac3", "1" = "#fc8d62", "2" = "#8da0cb"))
 
-ggsave("../results/Clusters/Normalized_Variables_by_Time_Cluster_nightly.png", width = 6, height = 4, dpi = 400)
+ggsave(paste0("../results/Clusters/Normalized_Variables_by_Time_Cluster_", timestep, ".png"), width = 6, height = 4, dpi = 400)
 
 ```
+
+
+
+
+
+# Mapping (for daily and hourly)
+```{r}
+# for all the values of time_cluster, plot the UHI_mean
+for(i in 0:3){
+  p <- time_clusters_UHI |>
+    filter(time_cluster == i) |>
+    ggplot(aes(x = OST_CHTOPO, y = NORD_CHTOPO, fill = UHI)) +
+      geom_point(      
+        color = "black",
+        shape = 21,
+        size = 4,
+        stroke = 0.4) +
+      labs(title = paste(timestep, "Time Cluster N°", i), 
+           fill = "UHI",
+           x = "Longitude", y = "Latitude") +
+      theme(legend.position = "bottom") +
+      # Use color palette RdYlBu with midpoint at 0
+      #scale_color_gradient2(low = "blue", mid = "beige", high = "red", midpoint = 0, limits= c(-5, 5)) +
+      scale_fill_viridis_c(name = "UHI [K]", limits= c(-1, 5.1)) +
+      coord_equal(expand = TRUE) +
+      theme_bw()
+  print(p)
+  
+  # save the plot
+  ggsave(paste0("../results/Clusters/TimeCluster_", timestep, "_", i, cluster_variable, ".png"), width = 5, height = 4, dpi = 300)
+}
+```
+
+```{r}
+station_clusters_UHI |>
+    ggplot(aes(x = OST_CHTOPO, y = NORD_CHTOPO, fill = station_cluster)) +
+      geom_point(      
+        color = "black",
+        shape = 21,
+        size = 4,
+        stroke = 0.4) +
+      labs(title = "Clustered Stations", 
+           fill = "Cluster",
+           x = "Longitude", y = "Latitude") +
+      theme(legend.position = "bottom") +
+      coord_equal(expand = TRUE) +
+      scale_fill_brewer(palette = "Dark2") +
+      theme_bw()
+```
+
+# Leaflet (for daily and hourly)
+```{r}
+# Base map with layer control
+map <- leaflet() |>
+  addProviderTiles(providers$Esri.WorldTopoMap, group = "Esri World Topo") |>
+  addLayersControl(
+    overlayGroups = c(paste("Cluster", 0:3), "Station Clusters"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+# Add time_cluster layers (Cluster 0 to Cluster 5)
+for (i in 0:3) {
+  cluster_data <- time_clusters_UHI |>
+    filter(time_cluster == i)
+  
+  pal_uhi <- colorNumeric(palette = viridis(100), domain = c(-1, 5.1), reverse = FALSE)
+  
+  map <- map |>
+    addCircleMarkers(
+      data = cluster_data,
+      lng = ~OST_CHTOPO,
+      lat = ~NORD_CHTOPO,
+      fillColor = ~pal_uhi(UHI),
+      color = "black",
+      fillOpacity = 1,
+      stroke = TRUE,
+      radius = 6,
+      weight = 0.4,
+      group = paste("Cluster", i),
+      label = ~paste("UHI:", round(UHI, 2))
+    )
+}
+
+# Add station_clusters_UHI layer
+pal_cluster <- colorFactor(palette = "Dark2", domain = station_clusters_UHI$station_cluster)
+
+map <- map |>
+  addCircleMarkers(
+    data = station_clusters_UHI,
+    lng = ~OST_CHTOPO,
+    lat = ~NORD_CHTOPO,
+    fillColor = ~pal_cluster(station_cluster),
+    color = "black",
+    fillOpacity = 1,
+    stroke = TRUE,
+    radius = 6,
+    weight = 0.4,
+    group = "Station Clusters",
+    label = ~paste("Cluster:", station_cluster)
+  )
+
+# Add legend for UHI (fixed for all Cluster layers)
+map <- map |>
+  addLegend(
+    position = "bottomright",
+    pal = colorNumeric(viridis(100), domain = c(-1, 5.1)),
+    values = time_clusters_UHI$UHI,
+    title = "UHI [K]",
+    group = "UHI Clusters"
+  )
+
+# Add legend for Station Clusters
+map <- map |>
+  addLegend(
+    position = "bottomleft",
+    pal = pal_cluster,
+    values = station_clusters_UHI$station_cluster,
+    title = "Station Cluster",
+    group = "Station Clusters"
+  )
+
+map
+
+
+```
+
+# distribution of UHI by time cluster
+```{r}
+# custom color palette for cluster values
+if(timesep == "daily"){
+  cluster_colors <- c('#a6d854','#fc8d62','#8da0cb','#e78ac3','#66c2a5','#ffd92f')
+} else {
+  cluster_colors <- c('#fc8d62','#8da0cb','#a6d854','#e78ac3','#66c2a5','#ffd92f')
+}
+
+# Look at the distribution of UHI_mean for each time cluster
+time_clusters_UHI |>
+  ggplot(aes(x = UHI, fill = factor(time_cluster))) +
+  geom_density(alpha = 0.5) +
+  theme_minimal() +
+  labs(title = paste("Distribution of UHI by Time Cluster", timestep), fill = "Time Cluster") +
+  theme(legend.position = "bottom") +
+  scale_fill_manual(values = cluster_colors)
+
+ggsave(paste0("../results/Clusters/Distribution_UHI_by_Time_Cluster", timestep, ".png"), width = 5, height = 4, dpi = 300)
+
+```
+
+
+
+# Find night that is closest to the cluster means
+```{r}
+# Compute nightly UHI vectors per station per cluster
+nightly_profiles <- all_data_daily_night_clusters |>
+  group_by(time_cluster, time, Log_NR) |>
+  summarise(UHI = mean(UHI, na.rm = TRUE), .groups = "drop") |>
+  pivot_wider(names_from = Log_NR, values_from = UHI) |>
+  drop_na()  # Remove rows with NA values
+
+library(purrr)
+
+# Get the cluster-wise mean UHI profile (your existing table)
+cluster_means <- nightly_profiles |> 
+  group_by(time_cluster) |>
+  summarise(across(starts_with("Log_"), ~ mean(., na.rm = TRUE)), .groups = "drop")
+
+# str(nightly_profiles)
+# str(cluster_means)
+
+# Function to compute Euclidean distance
+compute_distance <- function(vec1, vec2) {
+  sqrt(sum((vec1 - vec2)^2, na.rm = TRUE))
+}
+
+# For each cluster, find the closest night
+closest_nights <- nightly_profiles |>
+  nest(data = -time_cluster) |>
+  left_join(cluster_means |> nest(cluster_mean = -time_cluster), by = "time_cluster") |>
+  mutate(
+    best_match = map2(data, cluster_mean, function(night_rows, cluster_vec) {
+      night_rows |>
+        rowwise() |>
+        mutate(
+          distance = compute_distance(
+            c_across(starts_with("Log_")),
+            unlist(cluster_vec)
+          )
+        ) |>
+        arrange(distance) |>
+        slice(1)
+    })
+  ) |>
+  select(time_cluster, best_match) |>
+  unnest(best_match)
+
+closest_nights
+
+closest_nights |>
+  group_by(time_cluster) |>
+  dplyr::summarize(day = first(time),
+            across(starts_with("Log_"), ~ first(.)), .groups = "drop") |>
+  # mean over all columns that start with Log_
+  pivot_longer(cols = starts_with("Log_"), names_to = "Log_NR", values_to = "UHI") |>
+  group_by(time_cluster, day) |>
+  dplyr::summarize(UHI_mean = mean(UHI, na.rm = TRUE), .groups = "drop")
+
+```
+
+# visualize the uhi profile differences
+```{r}
+# Cluster means to long format
+cluster_means_long <- cluster_means |>
+  pivot_longer(cols = starts_with("Log_"), names_to = "Log_NR", values_to = "UHI_mean")
+
+# Best-matching nights to long format
+best_matches_long <- closest_nights |>
+  group_by(time_cluster) |>
+  summarize(across(starts_with("Log_"), ~ first(.)), .groups = "drop") |>
+  pivot_longer(cols = starts_with("Log_"), names_to = "Log_NR", values_to = "UHI_night")
+
+plot_data <- left_join(best_matches_long, cluster_means_long,
+                       by = c("time_cluster", "Log_NR"))
+
+
+
+# Define your custom cluster colors (you can use only the first 4 if you have 4 clusters)
+cluster_colors <- c('#a6d854','#fc8d62','#8da0cb','#e78ac3')
+night_colors <- c('#66a61e','#d94f22','#5560a3','#e7339a')
+#7570b3
+#e7298a
+#66a61e)
+
+# Reuse plot_data from earlier step (joined long-format cluster means and best matches)
+
+ggplot(plot_data, aes(x = Log_NR)) +
+  # Cluster mean: thick solid line
+  geom_line(aes(y = UHI_mean, group = time_cluster, color = time_cluster), linewidth = 1.2, alpha=0.5) +
+  # Best-match night: dashed line
+  geom_line(aes(y = UHI_night, group = time_cluster, color = time_cluster), 
+            linewidth = 0.6) +
+  scale_color_manual(values = cluster_colors,
+                    labels = c("0" = "rainy\n2024-09-05\n",
+                               "1" = "changeable\n2024-08-27\n",
+                               "2" = "sunny\n2024-08-29\n",
+                               "3" = "windy + dry\n2024-08-14\n")) +
+  theme_minimal() +
+  labs(
+    title = "Mean UHI Profiles per Time Cluster",
+    subtitle = "lighter = Cluster Mean | darker = Best-Matching Night",
+    x = "Measurement site",
+    y = "mean nighttime UHI [K]",
+    color = "Time Cluster"
+  ) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.4))
+
+ggsave(paste0("../results/Clusters/UHI_Profile_Comparison_", timestep, ".png"), width = 6, height = 4, dpi = 300)
+
+```
+
+# Create TIFFs of the meteorological predictors of the four representative cluster nights
+```{r}
+# date <- "2024-08-23" # night with highest mean UHI: 3.13 K
+# date <- "2024-07-27"# night with average mean UHI: 1.42 K ## not a good day bc of missing data at a logger
+# date <- "2024-09-26"# night with lowest mean UHI: -0.97 K
+# date <- "2024-08-11" # night with average UHI: 1.54 K
+# date <- "2024-08-13" # night with low UHI: 0.69 K
+
+source("../R/map_helpers.R")
+#dates = c("2024-08-23", "2024-08-11", "2024-08-13", "2024-09-26") #highest UHI, average UHI, lowest UHI
+dates <- closest_nights |>
+  group_by(time_cluster) |>
+  summarize(day = as.character(first(time)))
+dates <- as.vector(dates$day)
+
+for (date in dates) {
+  rasters <- create_meteo_tiffs(date = date, overwrite = TRUE)
+  print(paste("Created rasters for date:", date))
+}
+```
+
+
 

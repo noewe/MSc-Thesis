@@ -52,12 +52,21 @@ create_meteo_tiffs <- function(date,
 
 
 
-predict_temperature_map <- function(model,
+predict_temperature_map <- function(model = NULL,
                                     date,
                                     daynight = "n",
                                     meteo_dir = "../data/Geodata/Meteo_daily",
                                     lulc_dir = "../data/Geodata/LULCTopo_Thun",
-                                    output_path = NULL, overwrite = TRUE) {
+                                    output_path = NULL, overwrite = TRUE,
+                                    uhi_range = NULL) {
+  if(is.null(model)) {
+    print("Load model from folder.")
+    model_path <- file.path(paste0(output_path, "model.rds"))
+    if (!file.exists(model_path)) {
+      stop("Model file does not exist at the specified path: ", model_path)
+    }
+    model <- readRDS(model_path)
+  }
 
   # Extract predictor variable names (remove response)
   model_vars <- all.vars(formula(model))[-1]
@@ -71,19 +80,6 @@ predict_temperature_map <- function(model,
   raster_list <- list()
   missing_vars <- c()
   
-  # for (var in model_vars) {
-  #   # Construct raster paths
-  #   meteo_path <- file.path(meteo_dir, date, daynight, paste0(var, ".tif"))
-  #   lulc_path <- file.path(lulc_dir, paste0(var, ".tif"))
-  #   
-  #   if (file.exists(meteo_path)) {
-  #     raster_list[[var]] <- rast(meteo_path)
-  #   } else if (file.exists(lulc_path)) {
-  #     raster_list[[var]] <- rast(lulc_path)
-  #   } else {
-  #     missing_vars <- c(missing_vars, var)
-  #   }
-  # }
   for (var in model_vars) {
     meteo_path <- file.path(meteo_dir, date, daynight, paste0(var, ".tif"))
     lulc_path <- file.path(lulc_dir, paste0(var, ".tif"))
@@ -145,7 +141,11 @@ predict_temperature_map <- function(model,
   names(df)[3] <- "predicted_temp"
   
   # Combine predicted and measured values to get common limits
-  zlim <- range(c(df$predicted_temp, measurement_data$UHI), na.rm = TRUE)
+  if(is.null(uhi_range)) {
+    zlim <- range(c(df$predicted_temp, measurement_data$UHI), na.rm = TRUE)
+  } else{
+    zlim <- uhi_range
+  }
   
   p <- ggplot(df, aes(x = x, y = y)) +
     geom_raster(aes(fill = predicted_temp)) +

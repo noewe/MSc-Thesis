@@ -19,29 +19,52 @@ data <- data |>
          Log_NR,
          wind_vel,
          rad,
-         time)
+         humidity,
+         time) |>
+  mutate(daynight = ifelse(rad == 0, "n", "d"))
 
-data_401 <- data |>
-  filter(Log_NR == "Log_401") |>
-  select(-Log_NR)
+data_402 <- data |>
+  filter(Log_NR == "Log_402") |>
+  select(-Log_NR) |>
+  mutate(bias = air_temp_LCD - air_temp)
+```
+
+# Metrics for the radiation bias
+```{r}
+print("LM for air_temp")
+lm_AT_d <- lm(bias ~ air_temp, data = data_402 |> filter(daynight == "d"))
+lm_AT_n <- lm(bias ~ air_temp, data = data_402 |> filter(daynight == "n"))
+summary(lm_AT_d)
+summary(lm_AT_n)
+print("LM for wind_vel")
+lm_W_d <- lm(bias ~ wind_vel, data = data_402 |> filter(daynight == "d"))
+lm_W_n <- lm(bias ~ wind_vel, data = data_402 |> filter(daynight == "n"))
+summary(lm_W_d)
+summary(lm_W_n)
+print("LM for rad")
+lm_R <- lm(bias ~ rad, data = data_402)
+summary(lm_R)
+
+
+
 ```
 
 ```{r}
-data_401 |>
+data_402 |>
   mutate(hour = hour(time),
          bias = air_temp_LCD - air_temp) |>
   ggplot(aes(x = factor(hour), y = bias)) +
-  geom_boxplot(fill = "#90d090") +
+  geom_boxplot() +
   geom_hline(yintercept = 0, linetype = "dashed") +
-  labs(title = "Bias in Air Temperature",
+  labs(title = "Measurement bias of LCD",
        subtitle = "hourly data",
        x = "Hour of Day",
-       y = "Bias (LCD - MeteoSwiss, °C)") +
+       y = "Bias (K)") +
   theme_minimal()
-ggsave("../results/bias/air_temp_bias.png", width = 6, height = 4, dpi = 300)
+ggsave("../results/bias/air_temp_bias.png", width = 6, height = 4, dpi = 400)
 
 # if this plot is inverse, the UHIs are correctly calculated
-data_401 |>
+data_402 |>
   mutate(hour = hour(time),
          bias = UHI_LCD - UHI) |>
   ggplot(aes(x = factor(hour), y = bias)) +
@@ -50,24 +73,170 @@ data_401 |>
   labs(title = "Bias in UHI",
        subtitle = "hourly data",
        x = "Hour of Day",
-       y = "Bias (LCD - MeteoSwiss, °C)") +
+       y = "Bias (K)") +
   theme_minimal()
-ggsave("../results/bias/UHI_bias.png", width = 6, height = 4, dpi = 300)
+ggsave("../results/bias/UHI_bias.png", width = 6, height = 4, dpi = 400)
 
 
-data_401 |>
+data_402 |>
   mutate(bias = air_temp_LCD - air_temp) |>
   ggplot(aes(x = air_temp, y = bias)) +
-  geom_point(alpha = 0.3, color = "#66aa77") +
-  geom_smooth(method = "loess", color = "#336039", se = FALSE) +
+  # geom_point(alpha = 0.3, color = "#66aa77") +
+  # geom_smooth(method = "loess", color = "#336039", se = FALSE) +
+  geom_point(alpha = 0.3, color = "#555555") +
+  geom_smooth(method = "loess", color = "black", se = FALSE) +
+  geom_vline(xintercept = 18, linetype = "dashed", color = "red") +
+  # label for
+  annotate("text", x = 20.5, y = 3.8, label = "18°C\nventilation\nthreshold", color = "red", ) +
   labs(title = "Bias vs. Measured Temperature",
        subtitle = "hourly data",
        x = "MeteoSwiss Temperature (°C)",
-       y = "Bias (LCD - MeteoSwiss, °C)") +
+       y = "Bias (K)") +
   theme_minimal()
-ggsave("../results/bias/bias_vs_measured_temp.png", width = 6, height = 4, dpi = 300)
+ggsave("../results/bias/bias_vs_measured_temp.png", width = 6, height = 4, dpi = 400)
+
+data_402 |>
+  mutate(bias = air_temp_LCD - air_temp) |>
+  ggplot(aes(x = air_temp, y = bias, color = daynight)) +
+  # geom_point(alpha = 0.3, color = "#66aa77") +
+  # geom_smooth(method = "loess", color = "#336039", se = FALSE) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "loess", se = FALSE) +
+  geom_vline(xintercept = 18, linetype = "dashed", color = "red") +
+  scale_color_manual(values = c("d" = "#ffbb11", "n" = "#115588"), 
+                     labels = c("d" = "> 0 W/m²", "n" = "0 W/m²")) +
+  annotate("text", x = 20.5, y = 3.8, label = "18°C\nventilation\nthreshold", color = "red", ) +
+  labs(title = "Bias vs. Measured Temperature",
+       subtitle = "hourly data",
+       x = "MeteoSwiss Temperature (°C)",
+       y = "Bias (K)",
+       color= "Radiation") +
+  theme_minimal()
+ggsave("../results/bias/bias_vs_measured_temp_rad.png", width = 6, height = 4, dpi = 400)
+
+
+data_402 |>
+  mutate(
+    bias = air_temp_LCD - air_temp,
+    daynight_label = factor(daynight, levels = c("d", "n"), labels = c("> 0 W/m²", "0 W/m²"))
+  ) |>
+ggplot(aes(x = air_temp, y = bias)) +
+  # Points with light color, no legend
+  geom_point(aes(color = daynight), alpha = 0.25, show.legend = FALSE) +
+  # Smooth lines with labeled variable (so legend appears)
+  geom_smooth(
+    aes(color = daynight_label), 
+    method = "loess", 
+    se = FALSE, 
+    linewidth = 1.2
+  ) +
+  # Only one color scale, used for the lines (and indirectly for points)
+  scale_color_manual(
+    values = c(
+      "d" = "#ffbb11",         # points
+      "n" = "#115588",         # points
+      "> 0 W/m²" = "#cc9900",  # smooth line
+      "0 W/m²" = "#0d3a66"     # smooth line
+    ),
+    breaks = c("> 0 W/m²", "0 W/m²"),  # only lines in legend
+    name = "Radiation"
+  ) +
+  geom_vline(xintercept = 18, linetype = "dashed", color = "red") +
+  annotate("text", x = 20.5, y = 3.8, label = "18°C\nventilation\nthreshold", color = "red") +
+  labs(
+    title = "Bias vs. Measured Temperature",
+    subtitle = "hourly data",
+    x = "MeteoSwiss Temperature (°C)",
+    y = "Bias (K)"
+  ) +
+  theme_minimal()
+ggsave("../results/bias/bias_vs_measured_temp_rad.png", width = 7, height = 4, dpi = 400)
+
+
+
+data_402 |>
+    mutate(
+    bias = air_temp_LCD - air_temp,
+    daynight_label = factor(daynight, levels = c("d", "n"), labels = c("> 0 W/m²", "0 W/m²"))
+  ) |>
+  ggplot(aes(x = wind_vel, y = bias)) +
+  # Light-colored points (no legend)
+  geom_point(aes(color = daynight), alpha = 0.25, show.legend = FALSE) +
+  # Darker smooth lines with legend
+  geom_smooth(
+    aes(color = daynight_label),
+    method = "loess",
+    se = FALSE,
+    linewidth = 1.2
+  ) +
+  # Unified color scale for both, legend limited to lines only
+  scale_color_manual(
+    values = c(
+      "d" = "#ffbb11",         # points
+      "n" = "#115588",         # points
+      "> 0 W/m²" = "#cc9900",  # smooth line
+      "0 W/m²" = "#0d3a66"     # smooth line
+    ),
+    breaks = c("> 0 W/m²", "0 W/m²"),  # only show lines in legend
+    name = "Radiation"
+  ) +
+  labs(
+    title = "Bias vs. Wind Velocity",
+    subtitle = "hourly data",
+    x = "Wind Velocity (km/h)",
+    y = "Bias (K)"
+  ) +
+  theme_minimal() +
+  theme(legend.position = c(0.86, 0.6))  # inside bottom-right corner
+ggsave("../results/bias/bias_vs_wind.png", width = 8, height = 4, dpi = 400)
+
+
+data_402 |>
+  mutate(bias = air_temp_LCD - air_temp,
+         ventilated = ifelse(air_temp_LCD >= 18, "y", "n")) |>
+  ggplot(aes(x = rad, y = bias, color = ventilated)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "loess", color = "black", se = FALSE) +
+    scale_color_manual(values = c("y" = "blue", "n" = "red"), 
+                     labels = c("y" = "Yes", "n" = "No")) +
+  labs(title = "Bias vs. Radiation",
+       subtitle = "hourly data",
+       x = "Radiation (W/m²)",
+       y = "Bias (K)",
+       color = "Ventilated") +
+  theme_minimal()
+ggsave("../results/bias/bias_vs_rad_ventilation.png", width = 6, height = 4, dpi = 400)
+
+data_402 |>
+  mutate(bias = air_temp_LCD - air_temp) |>
+  ggplot(aes(x = humidity, y = bias)) +
+  geom_point(alpha = 0.3, color = "#555555") +
+  geom_smooth(method = "loess", color = "black", se = FALSE) +
+  labs(title = "Bias vs. Humidity",
+       subtitle = "hourly data",
+       x = "Relative Humidity (%)",
+       y = "Bias (K)") +
+  theme_minimal()
+ggsave("../results/bias/bias_vs_RH.png", width = 6, height = 4, dpi = 400)
+
+data_402 |>
+  mutate(bias = air_temp_LCD - air_temp) |>
+  ggplot(aes(x = rad, y = bias, color = humidity)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "loess", color = "black", se = FALSE) +
+  labs(title = "Bias vs. Radiation",
+       subtitle = "hourly data",
+       x = "Radiation (W/m²)",
+       y = "Bias (K)",
+       color = "RH (%)") +
+  #scale_color_gradient with spectral palette
+  scale_color_gradient(low = "#ff7711", high = "#118888") +
+  theme_minimal()
+ggsave("../results/bias/bias_vs_rad_hum.png", width = 6, height = 4, dpi = 400)
 
 ```
+
+
 Do the same for daily data
 ```{r}
 data_d <- readRDS("../data/final_predictors/all_data_daily.rds")
@@ -81,15 +250,15 @@ data_d <- data_d |>
          rad,
          time,
          daynight)
-data_d_401 <- data_d |>
-  filter(Log_NR == "Log_401") |>
+data_d_402 <- data_d |>
+  filter(Log_NR == "Log_402") |>
   mutate(bias = air_temp_LCD - air_temp) |>
   select(-Log_NR)
 ```
 
 ```{r}
 # plot air_temp_LCD and air_temp
- ggplot(data_d_401, aes(x = time)) +
+ ggplot(data_d_402, aes(x = time)) +
   geom_line(aes(y = air_temp_LCD, color = "Reference LCD"), linewidth = 0.5) +
   geom_line(aes(y = air_temp, color = "MeteoCH sensor"), linewidth = 0.3) +
   labs(title = "Air Temperature Comparison",
@@ -99,7 +268,7 @@ data_d_401 <- data_d |>
   theme_minimal()
 
 # plot air_temp_LCD and air_temp
- ggplot(data_d_401, aes(x = time)) +
+ ggplot(data_d_402, aes(x = time)) +
   geom_line(aes(y = UHI_LCD, color = "Reference LCD"), linewidth = 0.5) +
   geom_line(aes(y = UHI, color = "MeteoCH sensor"), linewidth = 0.3) +
   labs(title = "UHI Comparison",
@@ -108,7 +277,7 @@ data_d_401 <- data_d |>
   scale_color_manual(values = c("Reference LCD" = "orange", "MeteoCH sensor" = "red")) +
   theme_minimal()
   
-data_d_401 |>
+data_d_402 |>
   ggplot(aes(x = air_temp, y = bias, color = daynight)) +
   geom_point(alpha = 0.7) +
   # Add a loess smooth line for each group of "daynight*
@@ -124,11 +293,11 @@ data_d_401 |>
   theme_minimal()
 ggsave("../results/bias/bias_vs_measured_temp_daily.png", width = 6, height = 4, dpi = 300)
  
-data_d_401 |>
+data_d_402 |>
   ggplot(aes(x = factor(daynight), y = bias)) +
   geom_boxplot(aes(fill = daynight)) +
   geom_hline(yintercept = 0, linetype = "dashed") +
-  labs(title = "Bias in Air Temperature",
+  labs(title = "Measurement bias of LCD",
        subtitle = "half-daily data",
        x = "Time of Day",
        y = "Bias (LCD - MeteoSwiss, °C)") +
@@ -143,4 +312,6 @@ data_d_401 |>
 ggsave("../results/bias/air_temp_bias_daily.png", width = 4, height = 4, dpi = 300)  
   
 ```
+
+
 
