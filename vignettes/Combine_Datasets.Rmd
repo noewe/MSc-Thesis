@@ -70,6 +70,10 @@ meta <- meta |>
 str(meta)
 
 write.csv(meta, "../data/Metadata/metadata_Thun_geodata.csv")
+
+geospatial_predictors <- meta[, 14:123]
+# Save geospatial predictors
+write.csv(geospatial_predictors, "../data/final_predictors/geospatial_predictors.csv", row.names = FALSE)
 ```
 
 Water temperature data
@@ -104,11 +108,11 @@ Water_data_2 <- read.csv(
 # Combine the two datasets
 Water_data <- rbind(Water_data, Water_data_2)
 Water_data <- Water_data |>
-  mutate(time = as.POSIXct(Water_data$Zeitstempel, format = "%Y-%m-%d %H:%M:%S",  tz = "Europe/Zurich")) |>
-  select(time, water_temp = Wert) |>
+  mutate(time = as.POSIXct(Zeitstempel, format = "%Y-%m-%d %H:%M:%S",  tz = "Europe/Zurich"))
+Water_data <- Water_data |>
+  select(time, Wert) |>
+  rename(water_temp = Wert) |>
   filter(time>= "2024-05-01 00:00:00" & time <= "2024-10-31 23:59:59")
-
-
 
 # ALPLAKES mean lake surface temperature
 
@@ -135,9 +139,10 @@ Sys.setlocale("LC_TIME", old_locale)
 # Aggregate to hourly data
 Water_data_hourly <- Water_data |>
     #mutate(time_hour = floor_date(time, unit = "hour")) |> # round to nearest hour (floor)
+  mutate(time = as.POSIXct(time)) |> 
   mutate(time = floor_date(time - minutes(1), unit = "hour") + hours(1)) |>
   group_by(time) |>
-  summarise(water_temp = mean(water_temp, na.rm = TRUE))
+  dplyr::summarise(water_temp = mean(water_temp, na.rm = TRUE))
 
 # Merge the two datasets
 Water_data_hourly <- Water_data_hourly |>
@@ -500,6 +505,16 @@ MeteoCH_data_daily <- MeteoCH_data_day |>
 # all variables of type char as factors
   mutate_if(is.character, as.factor)
 
+# rename old predictors to match shorter names
+name_table <- read.csv("../data/final_predictors/predictors_oldnames_mapping.csv", stringsAsFactors = FALSE)
+
+MeteoCH_data_daily <- MeteoCH_data_daily |>
+  rename_with(~ ifelse(
+    is.na(match(., name_table$name_old)),
+    .,  # keep original name
+    name_table$name_new[match(., name_table$name_old)]
+  ))
+
 write.csv(MeteoCH_data_daily, "../data/final_predictors/Meteo_predictors_daily.csv")
 saveRDS(MeteoCH_data_daily, "../data/final_predictors/Meteo_predictors_daily.rds")
 
@@ -523,6 +538,14 @@ all_data_daily <- Thun_Network_data_daily |>
 
 visdat::vis_miss(all_data_daily, warn_large_data = FALSE)
 
+all_data_daily <- all_data_daily |>
+  rename_with(~ ifelse(
+    is.na(match(., name_table$name_old)),
+    .,  # keep original name
+    name_table$name_new[match(., name_table$name_old)]
+  ))
+
+
 write.csv(all_data_daily, "../data/final_predictors/all_data_daily.csv")
 saveRDS(all_data_daily, "../data/final_predictors/all_data_daily.rds")
 ```
@@ -537,14 +560,3 @@ rm(strandbad, Water_data, Water_data_hourly,
 ```
 
 
-## DELETE?
-Create files with only the predictors
-```{r}
-predictors_hourly <- all_data_hourly |>
-  select(-X, -T_mean, -T_min, -T_max, -HI_mean, -H_mean, -H_max, -H_min, -UHI_min, -UHI_max, -HI_min, -HI_max, -change_rate, -Location, -HuM, -LCZ_mixed, -LCZ, -LU_3, -LU_7, -ID)
-write.csv(predictors_hourly, "../data/final_predictors/predictors_hourly.csv")
-
-predictors_daily_night <- all_data_daily_night |>
-  select(-X, -T_mean, -T_min, -T_max, -HI_mean, -H_mean, -H_max, -H_min, -UHI_min, -UHI_max, -HI_min, -HI_max, -Location, -HuM, -LCZ_mixed, -LCZ, -LU_3, -LU_7, -ID, -valid_hours, -UHI_mean, -valid_hours_night, -valid_hours_day, -T_min_night, -Tropical_night, -Gfroerli_night, -T_mean_night, -T_mean_day, -T_max_day, -Summer_day, -Hot_day, -Very_hot_day, -UHI_day)
-write.csv(predictors_daily_night, "../data/final_predictors/predictors_daily_night.csv")
-```

@@ -11,7 +11,7 @@
 
 #source("../R/model_helpers.R")
 
-LUR_int_model <- function(train_data, test_data, target, target_name, met_vars, spat_vars, 
+LUR_int_model <- function(full_formula = NULL, train_data, test_data, target, target_name, met_vars, spat_vars, 
                           model_type = "LUR Model", model_type_short = "lur_model", 
                           save_model = TRUE, plot_lim = NA) {
   library(dplyr)
@@ -25,7 +25,10 @@ LUR_int_model <- function(train_data, test_data, target, target_name, met_vars, 
   train_data <- train_data |> filter(!is.na(.data[[target]]))
   test_data <- test_data |> filter(!is.na(.data[[target]]))
   
-  full_formula <- create_interaction_formula(target, spat_vars, met_vars)
+  if(is.null(full_formula)) {
+    # If no formula is provided, create it using the interaction terms
+    full_formula <- create_interaction_formula(target, spat_vars, met_vars)
+  }
   
   # Fit model 
   model <- lm(full_formula, data = train_data)

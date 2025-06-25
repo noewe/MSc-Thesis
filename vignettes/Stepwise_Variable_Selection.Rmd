@@ -1,0 +1,174 @@
+---
+title: "Stepwise_Variable_Selection"
+author: 'Noémie Wellinger'
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+```{r, message=FALSE}
+source("../R/load_packages.R")
+load_packages(c("dplyr", "ggplot2", "lubridate", "ggpubr", "lsr", "ggfortify"))
+```
+Preprocess data
+```{r setup, include=FALSE, message = FALSE}
+meteo_all <- readRDS("../data/final_predictors/all_data_daily.rds")
+
+meteo_all <- meteo_all |>
+  filter(!is.na(UHI))
+model_data <- meteo_all |>
+    dplyr::select(
+    -time, -Log_NR, -NORD_CHTOPO, -OST_CHTOPO, -LV_03_E, -LV_03_N, -Location,
+    -daynight, -air_temp_LCD, -UHI_LCD, -LCZ, -LCZ_mixed, -LU_3, -LU_7
+  ) 
+predictors <- meteo_all |>
+  dplyr::select(
+    -time, -Log_NR, -NORD_CHTOPO, -OST_CHTOPO, -LV_03_E, -LV_03_N, -Location,
+    -daynight, -air_temp_LCD, -UHI_LCD, -UHI, -LCZ, -LCZ_mixed, -LU_3, -LU_7
+  )
+
+# dataframe with only column names
+predictors <- data.frame(variable = names(predictors))
+write.csv(predictors, "../results/Variable Selection/predictors_oldnames_mapping.csv", row.names = FALSE)
+```
+
+```{r}
+library(MASS)
+
+# Start with intercept-only model
+model_null <- lm(UHI ~ 1, data = model_data |> tidyr::drop_na())
+var_names <- names(predictors)
+# formula from predictors
+scope <- as.formula(paste("~", paste(var_names, collapse = " + ")))
+
+# Load the model with all predictors
+LUR_all <- readRDS("../results/models/LUR_TH_all/model.rds")
+
+# Run stepwise backward selection
+model_forward <- stepAIC(LUR_all, 
+                          scope = list(upper = scope, lower = ~1), 
+                          direction = "backward", 
+                          trace = 1)
+
+# Run stepwise forward selection
+model_both <- stepAIC(model_null, scope = list(lower = ~1, upper = scope), 
+                          direction = "both", 
+                          trace = 1)
+
+summary(model_both)
+
+# save
+saveRDS(model_both, "../results/Variable Selection/model_stepwise.rds")
+
+```
+
+Sensitivity Analysis
+```{r}
+# Full model
+full_model <- model_both
+full_formula <- formula(full_model)
+terms_all <- attr(terms(full_model), "term.labels")
+
+# Store results
+aic_results <- data.frame(
+  dropped_variable = character(),
+  aic = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop over each variable to drop it and calculate new AIC
+for (term in terms_all) {
+  reduced_terms <- setdiff(terms_all, term)
+  reduced_formula <- as.formula(paste("UHI ~", paste(reduced_terms, collapse = " + ")))
+  reduced_model <- lm(reduced_formula, data = model_data)
+  aic_results <- rbind(aic_results, data.frame(
+    dropped_variable = term,
+    aic = AIC(reduced_model)
+  ))
+}
+
+# Sort results: lowest AIC (best) at top
+aic_results <- aic_results[order(aic_results$aic), ]
+print(head(aic_results, 10))  # Show top 10 most impactful drops
+
+```
+
+```{r}
+library(ggplot2)
+
+# Compute AIC difference compared to full model
+aic_full <- AIC(full_model)
+aic_results$delta_aic <- aic_results$aic - aic_full
+
+# Sort by delta AIC
+aic_results <- aic_results[order(aic_results$delta_aic), ]
+
+# Plot
+ggplot(aic_results, aes(x = reorder(dropped_variable, delta_aic), y = delta_aic)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "darkred") +
+  coord_flip() +
+  labs(
+    title = "AIC Sensitivity: Effect of Dropping Each Variable",
+    x = "Dropped Variable",
+    y = expression(Delta~AIC)
+  ) +
+  theme_minimal()
+
+```
+```{r}
+# Full model
+full_model <- model_both
+full_formula <- formula(full_model)
+terms_all <- attr(terms(full_model), "term.labels")
+base_model <- lm("UHI ~ 1", data = model_data)
+
+# Store results
+aic_steup <- data.frame(
+  step = 0:length(terms_all),
+  added_variable = c("none", terms_all),
+  aic = NA,
+  stringsAsFactors = FALSE
+)
+aic_stepup$aic[1] <- AIC(base_model)
+
+# Iteratively add variables and compute AIC
+current_vars <- character()
+
+for (i in seq_along(terms_all)) {
+  current_vars <- c(current_vars, terms_all[i])
+  print(paste("Adding variable:", terms_all[i]))
+  formula_i <- as.formula(paste("UHI ~", paste(current_vars, collapse = " + ")))
+  print(paste("Current formula:", formula_i))
+  model_i <- lm(formula_i, data = model_data)
+  aic_stepup$aic[i + 1] <- AIC(model_i)
+  print(paste("AIC after adding:", aic_stepup$aic[i + 1]))
+}
+
+# Sort results: lowest AIC (best) at top
+print(head(aic_stepup, 10))  # Show top 10 most impactful drops
+
+ggplot(aic_stepup[-1, ], aes(x = reorder(added_variable, step), y = aic)) +
+  geom_line(aes(group = 1), color = "black") +
+  geom_point(size = 2, color = "black") +
+  geom_hline(yintercept = aic_stepup$aic[1], linetype = "dashed", color = "black") +
+  # add label for the hline
+  geom_text(aes(x = 3, y = aic_stepup$aic[1], label = "UHI ~ 1"), 
+            vjust = 1.5, color = "black") +
+  geom_vline(xintercept = 24.5, color = "darkred") +
+  geom_text(aes(x = 27, y = max(aic_stepup$aic) + 10, label = "cutoff 1"), 
+            vjust = 24, color = "darkred") +
+    geom_vline(xintercept = 33.5, color = "darkred") +
+  geom_text(aes(x = 36, y = max(aic_stepup$aic) + 10, label = "cutoff 2"), 
+            vjust = 24, color = "darkred") +
+  labs(
+    title = "AIC Stepwise Sensitivity Analysis",
+    x = "Variable Added (in order)",
+    y = "AIC"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggsave("../results/Variable Selection/stepwise_aic_sensitivity.png", width = 12, height = 5)
+
+```
+

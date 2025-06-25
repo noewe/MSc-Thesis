@@ -56,9 +56,10 @@ predict_temperature_map <- function(model = NULL,
                                     date,
                                     daynight = "n",
                                     meteo_dir = "../data/Geodata/Meteo_daily",
-                                    lulc_dir = "../data/Geodata/LULCTopo_Thun",
+                                    lulc_dir = "../data/Geodata/LULCTopo_Gauss",
                                     output_path = NULL, overwrite = TRUE,
-                                    uhi_range = NULL) {
+                                    uhi_range = NULL,
+                                    plot = FALSE) {
   if(is.null(model)) {
     print("Load model from folder.")
     model_path <- file.path(paste0(output_path, "model.rds"))
@@ -76,6 +77,7 @@ predict_temperature_map <- function(model = NULL,
   model_terms <- terms(model)
   factor_vars <- attr(model_terms, "dataClasses")[attr(model_terms, "dataClasses") == "factor"]
   factor_vars <- names(factor_vars)
+  print(paste("Factor variables in model:", paste(factor_vars, collapse = ", ")))
   
   raster_list <- list()
   missing_vars <- c()
@@ -95,9 +97,24 @@ predict_temperature_map <- function(model = NULL,
     
     # If variable was a factor in the model, make raster a factor too
     if (var %in% factor_vars) {
-      levels_in_model <- levels(model$model[[var]])
       r <- as.factor(r)
-      levels(r) <- data.frame(value = as.numeric(levels_in_model), label = levels_in_model)
+      
+      # Get only levels that actually appear in the model (non-NA coefficients)
+      model_coef_names <- names(coef(model))
+      used_levels <- model_coef_names[grepl(paste0("^", var), model_coef_names)]
+      used_levels_clean <- gsub(paste0(var), "", used_levels)
+      used_levels_clean <- gsub("^[:]", "", used_levels_clean)  # Remove colon if interaction term
+      used_levels_clean <- used_levels_clean[used_levels_clean != ""]  # Remove intercept etc.
+      
+      # Build levels table with integer codes
+      valid_levels <- unique(used_levels_clean)
+      valid_levels <- valid_levels[!is.na(valid_levels) & valid_levels != "(Intercept)"]
+      
+      # Make sure values are unique and match raster codes
+      level_df <- data.frame(value = seq_along(valid_levels), label = valid_levels)
+      
+      # Set factor levels
+      levels(r) <- level_df
     }
     
     raster_list[[var]] <- r
@@ -109,15 +126,102 @@ predict_temperature_map <- function(model = NULL,
   
   print("All variables found. Proceeding with prediction...")
   
-  # Stack and predict
+  # Stack and predict directly to disk
   raster_stack <- rast(raster_list)
-  prediction <- predict(raster_stack, model, na.rm = TRUE)
-  print("Prediction successful!")
+  output_file <- paste0(output_path, "heatmap_", date, daynight, ".tif")
   
-  # Save prediction raster
-  if (!is.null(output_path)) {
-    writeRaster(prediction, filename = paste0(output_path, "heatmap_", date, daynight, ".tif"), overwrite = overwrite)
+  predict(raster_stack, model, na.rm = TRUE, filename = output_file, overwrite = overwrite)
+  
+  print("Prediction written to disk successfully!")
+  
+  if(plot == TRUE){
+    # ---- Evaluate accuracy at measurement locations ----
+    measurement_data <- Masterfile |> 
+      filter(time == ymd(date)) |> 
+      select(UHI, Log_NR, NORD_CHTOPO, OST_CHTOPO, LV_03_N, LV_03_E)
+    
+    # Convert to sf and extract prediction
+    measurement_sf <- st_as_sf(measurement_data, coords = c("LV_03_E", "LV_03_N"), crs = crs(prediction))
+    measurement_data$pred <- terra::extract(prediction, vect(measurement_sf))[,2]
+    
+    # Compute metrics
+    residuals <- measurement_data$pred - measurement_data$UHI
+    rmse <- sqrt(mean(residuals^2, na.rm = TRUE))
+    r2 <- 1 - sum(residuals^2, na.rm = TRUE) / sum((measurement_data$UHI - mean(measurement_data$UHI, na.rm = TRUE))^2)
+    mbe <- mean(residuals, na.rm = TRUE)
+    
+    cat(sprintf("R² = %.3f ; RMSE = %.3f K ; MBE = %.3f K\n", r2, rmse, mbe))
+    
+    # ---- Create ggplot preview ----
+    df <- as.data.frame(prediction, xy = TRUE, na.rm = TRUE)
+    names(df)[3] <- "predicted_temp"
+    
+    # Combine predicted and measured values to get common limits
+    if(is.null(uhi_range)) {
+      zlim <- range(c(df$predicted_temp, measurement_data$UHI), na.rm = TRUE)
+    } else{
+      zlim <- uhi_range
+    }
+    
+    p <- ggplot(df, aes(x = x, y = y)) +
+      geom_raster(aes(fill = predicted_temp)) +
+      geom_point(
+        data = measurement_data,
+        aes(x = LV_03_E, y = LV_03_N, fill = UHI),
+        color = "black",
+        shape = 21,
+        size = 3,
+        stroke = 0.4
+      ) +
+      scale_fill_viridis_c(name = "UHI [K]", limits = zlim) +
+      coord_equal(expand = FALSE) +
+      labs(
+        title = "Urban Heat Island, prediction and measurements",
+        subtitle = paste(date, "|", ifelse(daynight == "d", "Day", "Night"), 
+                         "\nR² =", round(r2, 3), "| RMSE =", round(rmse, 3), "K", "| MB =", round(mbe, 3), "K"),
+        x = "Longitude", y = "Latitude"
+      ) +
+      theme_bw()
+    
+    print(p)
+    # # Save plot
+    if (!is.null(output_path)) {
+      ggsave(filename = paste0(output_path, "heatmap_", date, daynight, ".png"), plot = p, width = 5, height = 5, dpi = 300)
+    }
   }
+  
+  # # Return result
+  # return(list(
+  #   raster = prediction,
+  #   plot = p,
+  #   metrics = list(R2 = r2, RMSE = rmse, MBE = mbe),
+  #   measurement_data = measurement_data
+  # ))
+  
+}
+
+plot_temperature_map <- function(model_type_short = NULL,
+                                 dates = NULL,
+                                 folder = "../results/models/",
+                                 overwrite = TRUE,
+                                 uhi_range = NULL, 
+                                 daynight = "n",
+                                 pal = NULL) {
+
+  # custom palette
+  if(is.null(pal)) {
+    pal <- c("#440154", "#443983", "#31688e", "#21918c", "#35b779", "#99d743", "#fdd725", "#FBA73AFF", "#ED7953FF","#D8576BFF", "#BD3786FF")
+  }
+
+  for(date in dates) {
+  # load the tiff file in the folder
+  prediction <-  terra::rast(paste0(folder, model_type_short, "/heatmap_", date, daynight, ".tif"))
+  
+  # crop raster by 500m on each side
+  prediction <- terra::crop(prediction, terra::ext(prediction) + c(-1000, -1000, -500, -1000))
+  
+  # reproject to wgs84
+  prediction <- terra::project(prediction, "EPSG:4326")
   
   # ---- Evaluate accuracy at measurement locations ----
   measurement_data <- Masterfile |> 
@@ -125,7 +229,7 @@ predict_temperature_map <- function(model = NULL,
     select(UHI, Log_NR, NORD_CHTOPO, OST_CHTOPO, LV_03_N, LV_03_E)
   
   # Convert to sf and extract prediction
-  measurement_sf <- st_as_sf(measurement_data, coords = c("LV_03_E", "LV_03_N"), crs = crs(prediction))
+  measurement_sf <- st_as_sf(measurement_data, coords = c("OST_CHTOPO", "NORD_CHTOPO"), crs = crs(prediction))
   measurement_data$pred <- terra::extract(prediction, vect(measurement_sf))[,2]
   
   # Compute metrics
@@ -143,6 +247,8 @@ predict_temperature_map <- function(model = NULL,
   # Combine predicted and measured values to get common limits
   if(is.null(uhi_range)) {
     zlim <- range(c(df$predicted_temp, measurement_data$UHI), na.rm = TRUE)
+    # abs(max(zlim)) # to get the same range for both positive and negative values
+    zlim <- c(-abs(max(zlim)), abs(max(zlim)))
   } else{
     zlim <- uhi_range
   }
@@ -151,17 +257,24 @@ predict_temperature_map <- function(model = NULL,
     geom_raster(aes(fill = predicted_temp)) +
     geom_point(
       data = measurement_data,
-      aes(x = LV_03_E, y = LV_03_N, fill = UHI),
+      aes(x = OST_CHTOPO, y = NORD_CHTOPO, fill = UHI),
       color = "black",
       shape = 21,
       size = 3,
       stroke = 0.4
     ) +
-    scale_fill_viridis_c(name = "UHI [K]", limits = zlim) +
-    coord_equal(expand = FALSE) +
+    #scale_fill_viridis_c(name = "UHI [K]", limits = zlim) +
+    # colorbrewer Spectral palette inverse, with midpoint at 0
+    scale_fill_gradientn(name = "UHI [K]",
+                         # colors  = rev(RColorBrewer::brewer.pal(9, "YlOrRd")),
+                         # rainbow palette
+                         colors = pal,
+                         limits = zlim,
+                         oob = scales::squish) +
+    coord_sf(crs = "EPSG:4326", expand = FALSE) +
     labs(
-      title = "Urban Heat Island, prediction and measurements",
-      subtitle = paste(date, "|", ifelse(daynight == "d", "Day", "Night"), 
+      title = paste("UHI intensity — model:", model_type_short),
+      subtitle = paste(date, "|", ifelse(daynight == "d", "Day", "Night"),
                        "\nR² =", round(r2, 3), "| RMSE =", round(rmse, 3), "K", "| MB =", round(mbe, 3), "K"),
       x = "Longitude", y = "Latitude"
     ) +
@@ -169,19 +282,12 @@ predict_temperature_map <- function(model = NULL,
   
   print(p)
   # # Save plot
-  if (!is.null(output_path)) {
-    ggsave(filename = paste0(output_path, "heatmap_", date, daynight, ".png"), plot = p, width = 5, height = 5, dpi = 300)
+  ggsave(filename = paste0(folder, model_type_short, "/heatmap3_", date, daynight, ".png"), plot = p, width = 5, height = 5, dpi = 300)
+  
   }
-  
-  # # Return result
-  # return(list(
-  #   raster = prediction,
-  #   plot = p,
-  #   metrics = list(R2 = r2, RMSE = rmse, MBE = mbe),
-  #   measurement_data = measurement_data
-  # ))
-  
 }
+
+
 
 
 

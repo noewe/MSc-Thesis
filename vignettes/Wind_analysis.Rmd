@@ -137,7 +137,8 @@ ggsave("../results/Windroses/Wind_Rose_Lake_day.png", width = 6, height = 5, dpi
 Wind roses for strong and weak UHI
 ```{r}
 # filter for land use: only built up areas
-data_wind_night_built <- data_wind_night |>
+data_wind_night_built <- data_wind |>
+  filter(hour(time) >= 22 | hour(time) <= 6) |>
   filter(LU_7 == "dense urban" | LU_7 == "green urban" | LU_7 == "rural") |>
   group_by(time) |>
   summarise(wind_dir = mean(wind_dir, na.rm = TRUE),
@@ -160,7 +161,7 @@ data_wind_night_built_UHIn <- data_wind_night_built |>
 ggwindrose(
   speed = data_wind_night_built_UHIp$wind_vel,
   direction = data_wind_night_built_UHIp$wind_dir,
-  speed_cuts = c(2, 5, 10, 20),
+  speed_cuts = c(0, 2, 5, 10, 20, 35),
   legend_title = "Wind speed (km/h)",
   calm_wind = 0,
   n_col = 1,
@@ -175,7 +176,7 @@ ggsave("../results/Windroses/Wind_Rose_Reference_Station_night_UHIpos.png", widt
 ggwindrose(
   speed = data_wind_night_built_UHIn$wind_vel,
   direction = data_wind_night_built_UHIn$wind_dir,
-  speed_cuts = c(2, 5, 10, 20),
+  speed_cuts = c(0, 2, 5, 10, 20, 35),
   legend_title = "Wind speed (km/h)",
   calm_wind = 0,
   n_col = 1,
@@ -191,7 +192,7 @@ ggsave("../results/Windroses/Wind_Rose_Reference_Station_night_UHIneg.png", widt
 ggwindrose(
   speed = data_wind_night_built_UHIp$wind_vel_lake,
   direction = data_wind_night_built_UHIp$wind_dir_lake,
-  speed_cuts = c(2, 5, 10, 20),
+  speed_cuts = c(0, 2, 5, 10, 20, 25),
   legend_title = "Wind speed (km/h)",
   calm_wind = 0,
   n_col = 1,
@@ -206,7 +207,7 @@ ggsave("../results/Windroses/Wind_Rose_Lake_night_UHIpos.png", width = 6, height
 ggwindrose(
   speed = data_wind_night_built_UHIn$wind_vel_lake,
   direction = data_wind_night_built_UHIn$wind_dir_lake,
-  speed_cuts = c(2, 5, 10, 20),
+  speed_cuts = c(0, 2, 5, 10, 20, 25),
   legend_title = "Wind speed (km/h)",
   calm_wind = 0,
   n_col = 1,

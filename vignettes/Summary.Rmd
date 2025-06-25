@@ -142,6 +142,7 @@ data_long <- data_long |>
   mutate(change_rate = c(NA, diff(x = Temperature, k = 1)))
 
 write_csv(data_long, (paste0("../data/Thun Messnetz 2024/10min_long_", date_start, "_", date_end, ".csv")))
+write_rds(data_long, (paste0("../data/Thun Messnetz 2024/10min_long_", date_start, "_", date_end, ".rds")))
 ```
 
 ## Aggregate the data
@@ -199,6 +200,7 @@ data_long_hourly <- data_long_hourly |>
 
 #save as csv and excel
 write_csv(data_long_hourly, (paste0("../data/Thun Messnetz 2024/Thun_hourly_summary_", date_start, "_", date_end, ".csv")))
+saveRDS(data_long_hourly, (paste0("../data/Thun Messnetz 2024/Thun_hourly_summary_", date_start, "_", date_end, ".rds")))
 ```
 
 ### Diurnal
@@ -225,7 +227,9 @@ data_long_diurnal_JAS <- data_long_hourly |>
   mutate(across(everything(), ~ ifelse(is.nan(.)|is.infinite(.), NA, .)))
 
 write_csv(data_long_diurnal_MJJASO, (paste0("../data/Thun Messnetz 2024/Thun_diurnal_MJJASO.csv")))
+saveRDS(data_long_diurnal_MJJASO, (paste0("../data/Thun Messnetz 2024/Thun_diurnal_MJJASO.rds")))
 write_csv(data_long_diurnal_JAS, (paste0("../data/Thun Messnetz 2024/Thun_diurnal_JAS.csv")))
+saveRDS(data_long_diurnal_JAS, (paste0("../data/Thun Messnetz 2024/Thun_diurnal_JAS.rds")))
 ```
 
 ### Daily
@@ -348,6 +352,7 @@ rm(data_long_daily2, data_long_daily_night, data_long_daily_day, data_long_daily
 
 
 write_csv(data_long_daily, (paste0("../data/Thun Messnetz 2024/Thun_daily_summary_", date_start, "_", date_end, ".csv")))
+saveRDS(data_long_daily, (paste0("../data/Thun Messnetz 2024/Thun_daily_summary_", date_start, "_", date_end, ".rds")))
 ```
 
 ### Monthly
@@ -364,6 +369,7 @@ data_long_monthly <- data_long_daily |>
   mutate(across(everything(), ~ ifelse(is.nan(.)|is.infinite(.), NA, .)))
 
 write_csv(data_long_monthly, (paste0("../data/Thun Messnetz 2024/Thun_monthly_summary_", date_start, "_", date_end, ".csv")))
+saveRDS(data_long_monthly, (paste0("../data/Thun Messnetz 2024/Thun_monthly_summary_", date_start, "_", date_end, ".rds")))
 ```
 
 ### Season
@@ -390,7 +396,9 @@ data_long_JAS <- data_long_daily |>
   mutate(across(everything(), ~ ifelse(is.nan(.)|is.infinite(.), NA, .)))
 
 write_csv(data_long_MJJASO, (paste0("../data/Thun Messnetz 2024/Thun_MJJASO_summary_2024.csv")))
+saveRDS(data_long_MJJASO, (paste0("../data/Thun Messnetz 2024/Thun_MJJASO_summary_2024.rds")))
 write_csv(data_long_JAS, (paste0("../data/Thun Messnetz 2024/Thun_JAS_summary_2024.csv")))
+saveRDS(data_long_JAS, (paste0("../data/Thun Messnetz 2024/Thun_JAS_summary_2024.rds")))
 ```
 
 

@@ -1,0 +1,173 @@
+---
+title: "Plots_Analysis"
+output: html_document
+---
+
+```{r, echo  FALSE, message = FALSE}
+source("../R/load_packages.R")
+load_packages(c("ggplot2", "dplyr", "tidyr", "terra", "stringr"))
+```
+
+1. Geospatial predictors range
+```{r}
+# Load geospatial predictors
+geospatial_predictors <- read.csv("../data/final_predictors/geospatial_predictors.csv")
+
+# Folder for TIFFs
+tiff_folder <- "../data/Geodata/LULCTopo_Gauss/"
+
+# CSV summary stats
+csv_summary <- geospatial_predictors |>
+  pivot_longer(cols = everything(), names_to = "variable", values_to = "value") |>
+  mutate(variable = toupper(variable)) |>
+  group_by(variable) |>
+  summarise(
+    ymin = min(value, na.rm = TRUE),
+    lower = quantile(value, 0.25, na.rm = TRUE),
+    middle = median(value, na.rm = TRUE),
+    upper = quantile(value, 0.75, na.rm = TRUE),
+    ymax = max(value, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(source = "CSV")
+
+# TIFF summary stats
+tiff_summary <- lapply(names(geospatial_predictors), function(var_name) {
+  tiff_path <- file.path(tiff_folder, paste0(var_name, ".tif"))
+  if (file.exists(tiff_path)) {
+    r <- rast(tiff_path)
+    vals <- values(r, na.rm = TRUE)[, 1]
+    q <- quantile(vals, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE)
+    data.frame(
+      variable = toupper(var_name),
+      ymin = q[1],
+      lower = q[2],
+      middle = q[3],
+      upper = q[4],
+      ymax = q[5],
+      source = "TIFF"
+    )
+  } else {
+    warning(paste("Missing TIFF for:", var_name))
+    NULL
+  }
+}) |>
+  bind_rows()
+
+
+# Combine summaries
+combined_summary <- bind_rows(csv_summary, tiff_summary)
+
+# Normalize per variable across sources
+normalized_summary <- combined_summary |>
+  group_by(variable) |>
+  mutate(
+    global_min = min(ymin, na.rm = TRUE),
+    global_max = max(ymax, na.rm = TRUE),
+    scale_range = global_max - global_min,
+    ymin = (ymin - global_min) / scale_range,
+    lower = (lower - global_min) / scale_range,
+    middle = (middle - global_min) / scale_range,
+    upper = (upper - global_min) / scale_range,
+    ymax = (ymax - global_min) / scale_range
+  ) |>
+  select(-global_min, -global_max, -scale_range) |>
+  ungroup()
+
+# Plot normalized boxplots
+# ggplot(normalized_summary, aes(x = variable, fill = source)) +
+#   geom_boxplot(
+#     aes(ymin = ymin, lower = lower, middle = middle, upper = upper, ymax = ymax),
+#     stat = "identity",
+#     position = position_dodge(width = 0.75),
+#     width = 0.6
+#   ) +
+#   coord_flip() +
+#   theme_minimal() +
+#   labs(title = "Range of geospatial predictors",
+#        x = "Variable", y = "Normalized Value (0–1)", fill = "Data") +
+#   scale_fill_manual(values = c("CSV" = "skyblue", "TIFF" = "orange"),
+#                     labels = c("CSV" = "measurement sites", "TIFF" = "study area")) +
+#   # labels of x axis vertical
+#   theme(axis.text.x = element_text(angle = 90, hjust = 1),
+#   legend.position = "bottom")
+# 
+# ggsave("../results/Analysis/Geospatial_Predictors_Range.png", width = 4, height = 20, dpi = 300)
+
+normalized_summary <- normalized_summary |>
+  mutate(group = sub("^(.*?)_.*", "\\1", variable))
+
+ggplot(normalized_summary, aes(x = variable, color = source)) +
+  geom_boxplot(
+    aes(ymin = ymin, lower = lower, middle = middle, upper = upper, ymax = ymax),
+    stat = "identity", position = position_dodge(width = 0.75), width = 0.6
+  ) +
+  coord_flip() +
+  scale_y_continuous(breaks = c(0, 0.5, 1)) +
+  facet_wrap(~ group, scales = "free_y") +
+  theme_minimal(base_size = 10) +
+  labs(title = "Range of geospatial predictors",
+       x = "Variable", y = "Normalized Value (0–1)", color = "Data") +
+  scale_color_manual(values = c("CSV" = "#e66101", "TIFF" = "#5e3c99"),
+                    labels = c("CSV" = "measurement sites", "TIFF" = "study area")) +
+  theme(legend.position = "bottom")
+
+ggsave("../results/Analysis/Geospatial_Predictors_Range.png", width = 5.5, height = 8, dpi = 300)
+
+
+
+```
+
+2. Diurnal plots
+```{r}
+# Load data
+hourly <- readRDS("../data/final_predictors/all_data_hourly.rds") |>
+  select(time, Log_NR,  UHI, air_temp_LCD, NORD_CHTOPO, OST_CHTOPO, LV_03_N, LV_03_E, Location, LCZ, LU_3, LU_7)
+
+diurnal_JAS <- hourly |>
+  filter(month(time) %in% c(6, 7, 8)) |>
+  mutate(hour = hour(time)) |>
+  group_by(hour, Log_NR) |>
+  summarise(
+    UHI = mean(UHI, na.rm = TRUE),
+    air_temp_LCD = mean(air_temp_LCD, na.rm = TRUE),
+    NORD_CHTOPO = first(NORD_CHTOPO),
+    OST_CHTOPO = first(OST_CHTOPO),
+    LV_03_N = first(LV_03_N),
+    LV_03_E = first(LV_03_E),
+    LCZ = first(LCZ),
+    LU_3 = first(LU_3),
+    LU_7 = first(LU_7),
+    .groups = "drop"
+  )
+
+diurnal_MJJASO <- hourly |>
+  filter(month(time) %in% c(5, 6, 7, 8, 9, 10)) |>
+  mutate(hour = hour(time)) |>
+  group_by(hour, Log_NR) |>
+  summarise(
+    UHI = mean(UHI, na.rm = TRUE),
+    air_temp_LCD = mean(air_temp_LCD, na.rm = TRUE),
+    NORD_CHTOPO = first(NORD_CHTOPO),
+    OST_CHTOPO = first(OST_CHTOPO),
+    LV_03_N = first(LV_03_N),
+    LV_03_E = first(LV_03_E),
+    LCZ = first(LCZ),
+    LU_3 = first(LU_3),
+    LU_7 = first(LU_7),
+    .groups = "drop"
+  )
+```
+
+```{r}
+
+```
+
+
+
+
+3. Maps
+```{r}
+
+```
+

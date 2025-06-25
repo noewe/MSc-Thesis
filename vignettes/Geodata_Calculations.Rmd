@@ -248,4 +248,19 @@ plot(water_500_focal, main = "Focal Distance to Water (500 m)")
 plot(smoothed_500_3s, main = "Gaussian Smoothed Distance to Water (500 m, 3 sigma)")
 ```
 
+```{r}
+# Examine BH
+bh <- terra::rast("../data/Geodata/LULCTopo_Gauss/BH_250.tif")
+plot(bh, main = "BH Raster")
+
+# list all files in folder that start with "BH_" and end with ".tif"
+bh_files <- list.files("../data/Geodata/LULCTopo_Gauss/", pattern = "^BH.*\\.tif$", full.names = TRUE)
+
+# for each file, convert NA values to 0
+for (file in bh_files) {
+  raster <- terra::rast(file)
+  raster[is.na(raster)] <- 0
+  terra::writeRaster(raster, file, overwrite = TRUE)
+}
+```
 
