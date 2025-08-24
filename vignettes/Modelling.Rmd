@@ -65,7 +65,7 @@ ggsave("../results/models/Burger_Bern/Burger_Bern_TPI_500.png", width=6.5, heigh
 ```
 
 
-## Run Burger model for Thun
+## Run Burger model for Thun for JJA (to compare to Burger et al., 2022)
 ```{r Load data, include=FALSE, message=FALSE, warning=FALSE}
 # Load the daily data
 Masterfile <- readRDS("../data/final_predictors/all_data_daily.rds")
@@ -110,7 +110,7 @@ ggplot(QM_TPI_500_Model, mapping=aes(x=UHI_est, y= UHI)) +
   geom_point(alpha = 0.2) +
     labs(x="UHI intensity predicted [K]", 
        y="UHI intensity measured [K]", 
-       title= "LUR_INT_BE", #"Interaction model TPI Thun (calibrated on Bern)", 
+       title= "LUR_B0_JJA", #"Interaction model TPI Thun (calibrated on Bern)", 
        subtitle = substitute(
           R^2 == r2 ~ "; RMSE =" ~ rmse ~ "K" ~ "; MBE =" ~ mbe ~ "K",
           list(r2 = R2, rmse = RMSE, mbe = MBE)
@@ -120,12 +120,13 @@ ggplot(QM_TPI_500_Model, mapping=aes(x=UHI_est, y= UHI)) +
   ylim(c(-4.5,6)) +
   geom_abline(intercept=0, slope=1, color="red") +
   theme_bw()
-ggsave("../results/models/LUR_INT_BE/model_summary.png", width=6.5, height=4, dpi=300)
+ggsave("../results/models/LUR_B0_JJA/model_summary.png", width=6.5, height=4, dpi=600)
 ```
 
 Data Splitting
 ```{r}
 Masterfile <- readRDS("../data/final_predictors/all_data_daily.rds") 
+visdat::vis_miss(Masterfile, warn_large_data = F)
 
 Masterfile <- Masterfile |>
   filter(daynight == "n") |> # only night data)
@@ -162,6 +163,55 @@ plot_data |>
   facet_wrap(~variable, scales = "free")
 
 ggsave("../results/Variable Selection/data_split_density_plot.png", width = 8, height = 5, dpi = 300)
+```
+## Run Burger model for Thun
+```{r Load data, include=FALSE, message=FALSE, warning=FALSE}
+B0_test <- Masterfile_test |>
+  select(UHI,
+         AT,
+         Log_NR,
+         AD, 
+         GA_25,
+         BUL_250,
+         AC_750,
+         FO_1000,
+         TPI_500,
+         WS_S,
+         PP_bool,
+         GR_1d,
+         VH_150,
+         time)
+
+QM_TPI_500_Model<-mutate(B0_test, UHI_est=6.035e-01-(8.310e-03*AD)-(2.869e-01*GA_25)+(1.006e+00*BUL_250)-(6.103e-01*AC_750)-(2.332e-02*VH_150)-(7.164e-01*FO_1000)-
+                           (3.140e-03*TPI_500)-(4.913e-01*WS_S)-(9.963e-01*PP_bool)+(6.563e-03*GR_1d)+
+                           (4.705e-05*(GR_1d*AD))-(1.945e-03*(GR_1d*GA_25))+(4.572e-03*(GR_1d*BUL_250))-(1.029e-02*(GR_1d*AC_750))-(1.351e-04*(GR_1d*VH_150))-(6.211e-03*(GR_1d*FO_1000))+(6.031e-05*(GR_1d*TPI_500))-
+                           (1.396e-03*(WS_S*AD))-(4.788e-01*(WS_S*BUL_250))+(3.482e-01*(WS_S*AC_750))+(3.748e-01*(WS_S*FO_1000))-(8.287e-03*(WS_S*VH_150))-
+                           (5.562e-03*(PP_bool*AD))+(3.294e-01*(PP_bool*GA_25))+(1.630e+00*(PP_bool*AC_750))+(1.239e+00*(PP_bool*FO_1000))+(2.038e-02*(PP_bool*VH_150))-(5.588e-03*(PP_bool*TPI_500)))
+
+
+
+lm <- lm(UHI~ UHI_est, data=QM_TPI_500_Model)
+summary(lm)
+R2 <- round(summary(lm)$r.squared, 3)
+RMSE<-round(summary(lm)$sigma, 3)
+MBE<-round(mean(QM_TPI_500_Model$UHI_est - QM_TPI_500_Model$UHI, na.rm = TRUE), 3)
+
+
+ggplot(QM_TPI_500_Model, mapping=aes(x=UHI_est, y= UHI)) +
+  geom_point(alpha = 0.2) +
+    labs(x="UHI intensity predicted [K]", 
+       y="UHI intensity measured [K]", 
+       title= "LUR_B0", #"Interaction model TPI Thun (calibrated on Bern)", 
+       subtitle = substitute(
+          R^2 == r2 ~ "; RMSE =" ~ rmse ~ "K" ~ "; MBE =" ~ mbe ~ "K",
+          list(r2 = R2, rmse = RMSE, mbe = MBE)
+        )
+  ) +
+  xlim(c(-4.5,6)) +
+  ylim(c(-4.5,6)) +
+  geom_abline(intercept=0, slope=1, color="red") +
+  theme_bw()
+ggsave("../results/models/LUR_B0/model_summary.png", width=6.5, height=4, dpi=600)
 ```
 
 ```{r}
@@ -201,14 +251,6 @@ daily_means <- measurement_data |>
   theme_minimal()
 ```
 
-```{r}
-meteo_predictors_daily <- readRDS("../data/final_predictors/Meteo_predictors_daily.rds")
-
-dates <- c("2024-09-05", "2024-08-14", "2024-08-27", "2024-08-29")
-
-meteo_predictors_rep_nights <- meteo_predictors_daily |>
-  
-```
 
 
 
@@ -217,6 +259,9 @@ meteo_predictors_rep_nights <- meteo_predictors_daily |>
 source("../R/LUR_int_model.R")
 source("../R/model_helpers.R")
 source("../R/map_helpers.R")
+
+model_type_short = "LUR_T0"
+
 result <- LUR_int_model(
   train_data = Masterfile_train,
   test_data = Masterfile_test,
@@ -224,24 +269,23 @@ result <- LUR_int_model(
   target_name = "mean nighttime UHI",
   met_vars = c("WS_S", "PP_bool", "GR_1d"),
   spat_vars = c("AD", "GA_25", "BUL_250", "AC_750", "FO_1000", "TPI_500", "VH_150"),
-  model_type = "LUR_INT_TH",
-  model_type_short = "LUR_INT_TH",
+  model_type = model_type_short,
+  model_type_short = model_type_short,
   plot_lim = c(-4.5,6)
 )
-model_type_short = "LUR_INT_TH"
 for (date in dates) {
   predict_temperature_map(
     date = dates,
     daynight = "n",
     meteo_dir = "../data/Geodata/Meteo_daily",
     lulc_dir = "../data/Geodata/LULCTopo_Gauss",
-    output_path = "../results/models/LUR_INT_TH/",
+    output_path = "../results/models/LUR_T0/",
     uhi_range = c(-1.3, 5)
   )
 }
 
 plot_temperature_map(
-  model_type_short = "LUR_INT_TH",
+  model_type_short = model_type_short,
   dates = dates,
   uhi_range = c(-1.3, 5),
   #pal = c("#FCFDBF", "#FC8961", "#B73779", "#51127C", "#000004")
@@ -263,7 +307,7 @@ formula <- as.formula(UHI ~ AD + GA_25 + BUL_250 + AC_750 + VH_150 + FO_1000 + T
                      WS_S:AD + WS_S:BUL_250 + WS_S:AC_750 + WS_S:FO_1000 + WS_S:VH_150 +
                      PP_bool:AD + PP_bool:GA_25 + PP_bool:AC_750 + PP_bool:FO_1000 + PP_bool:VH_150 + PP_bool:TPI_500)
 
-model_type_short = "LUR_INT_BE"
+model_type_short = "LUR_B0"
 LUR_int_model(
   full_formula = formula,
   train_data = Masterfile_train,
@@ -325,13 +369,13 @@ coefs <- c(
 # model <- lm(form, data = dummy_data)
 
 # read the model
-model <- readRDS("../results/models/LUR_INT_BE/model.rds")
+model <- readRDS("../results/models/LUR_B0/model.rds")
 model$coefficients <- coefs
 #model$call$formula <- formula
 model$coefficients
 
 dates = c("2024-09-05", "2024-08-14", "2024-08-27", "2024-08-29")
-model_type_short = "LUR_INT_BE"
+model_type_short = "LUR_B0"
 for (date in dates) {
   predict_temperature_map(
     model = model,
@@ -499,37 +543,43 @@ for (date in dates) {
     uhi_range = c(-1.3, 5)
   )
 }
+plot_temperature_map(
+  model_type_short = "LUR_INT_TH+RH",
+  dates = dates,
+  uhi_range = c(-1.3, 5),
+  pal = c("#000004", "#51127C", "#B73779", "#FC8961", "#FCFDBF")
+)
 
+dates <- c("2024-09-05", "2024-08-14", "2024-08-27", "2024-08-29")
 for(model in c("LUR_INT_TH+TA", "LUR_INT_TH+GWT18", "LUR_INT_TH+CAP27", "LUR_INT_TH+WT", "LUR_INT_TH+WST", "LUR_INT_TH+RH")) {
   plot_temperature_map(
     model_type_short = model,
     dates = dates,
-    uhi_range = c(-1.3, 5)
+    uhi_range = c(-1.3, 5),
+    pal = c("#000004", "#51127C", "#B73779", "#FC8961", "#FCFDBF")
   )
 }
 ```
 
-
-
-# Model with 5 additional predictors
+# Model with 6 additional predictors
 ```{r}
 source("../R/LUR_int_model.R")
 source("../R/map_helpers.R")
 source("../R/model_helpers.R")
 
-model_type_short = "LUR_INT_TH+"
+model_type_short = "LUR_Tplus"
 result <- LUR_int_model(
   train_data = Masterfile_train,
   test_data = Masterfile_test,
   target = "UHI",
   target_name = "mean nighttime UHI",
-  met_vars = c("WS_S", "PP_bool", "GR_1d", "RH_1d", "WT_1d", "CAP27", "AT"),
+  met_vars = c("WS", "PP_bool", "GR_1d", "CAP27", "RH_1d", "WT", "AT", "WD_8", "PA_1d"),
   spat_vars = c("AD", "GA_25", "BUL_250", "AC_750", "FO_1000", "TPI_500", "VH_150", "WA_150"),
   model_type = model_type_short,
   model_type_short = model_type_short,
   plot_lim = c(-4.5,6)
 )
-
+dates = c("2024-09-05", "2024-08-14", "2024-08-27", "2024-08-29")
 for (date in dates) {
   predict_temperature_map(
     model = result$model,
@@ -543,9 +593,11 @@ for (date in dates) {
 }
 
 plot_temperature_map(
-  model_type_short = "LUR_INT_TH+",
+  model_type_short = model_type_short,
   dates = dates,
-  uhi_range = c(-1.3, 5)
+  # uhi_range = c(-1.3, 5),
+  uhi_range = c(-2, 7),
+  pal = c("#000004", "#51127C", "#B73779", "#FC8961", "#FCFDBF")
 )
 
 
@@ -559,6 +611,7 @@ coef_df <- broom::tidy(result$model) |>
   filter(term != "(Intercept)") |>  # Remove intercept to focus on predictors
   mutate(significant = p.value < 0.05)
 write.csv(coef_df, paste0("../results/models/", model_type_short, "/coef_df.csv"), row.names = FALSE)
+summary(result$model)
 
 # Plot
 ggplot(coef_df, aes(x = estimate, y = reorder(term, estimate), color = significant)) +
@@ -572,50 +625,9 @@ ggplot(coef_df, aes(x = estimate, y = reorder(term, estimate), color = significa
     subtitle = "Significant predictors (p < 0.05) shown in red"
   ) +
   theme_minimal()
-
-
 ```
 
-# Model with 5 additional predictors - but flipped WTCs
-```{r}
-source("../R/LUR_int_model.R")
-source("../R/map_helpers.R")
-source("../R/model_helpers.R")
 
-dates = c("2024-09-05", "2024-08-14", "2024-08-27", "2024-08-29")
-
-model_type_short = "LUR_INT_TH+_2"
-result <- LUR_int_model(
-  train_data = Masterfile_train,
-  test_data = Masterfile_test,
-  target = "UHI",
-  target_name = "mean nighttime UHI",
-  met_vars = c("WS_S", "PP_bool", "GR_1d", "RH_1d", "WT_1d", "AT"),
-  spat_vars = c("AD", "GA_25", "BUL_250", "AC_750", "FO_1000", "TPI_500", "VH_150", "WA_150","CAP27"),
-  model_type = model_type_short,
-  model_type_short = model_type_short,
-  plot_lim = c(-4.5,6)
-)
-
-for (date in dates) {
-  predict_temperature_map(
-    date = date,
-    daynight = "n",
-    meteo_dir = "../data/Geodata/Meteo_daily",
-    lulc_dir = "../data/Geodata/LULCTopo_Gauss",
-    output_path = paste0("../results/models/", model_type_short, "/"),
-    uhi_range = c(-1.3, 5),
-    plot = F
-  )
-}
-
-plot_temperature_map(
-  model_type_short = model_type_short,
-  dates = dates,
-  uhi_range = c(-1.3, 5)
-)
-
-```
 
 
 # Model with predictors from Stepwise variable selection - reduced variable set
@@ -624,7 +636,7 @@ source("../R/LUR_int_model.R")
 source("../R/map_helpers.R")
 source("../R/model_helpers.R")
 
-model_type_short = "LUR_INT_TH_Step_cut"
+model_type_short = "LUR_Tstep"
 
 model_stepwise <- readRDS("../results/Variable Selection/model_stepwise.rds")
 preds_stepwise <- attr(terms(model_stepwise), "term.labels")
@@ -639,10 +651,15 @@ preds_stepwise_cutoff1 <- sapply(preds_stepwise_cutoff1, function(var) {
 # select all meteo predictors by cross-checking with name_table$art == "met"
 met_vars_all <- name_table$name_new[name_table$art == "met"]
 met_vars_stepwise <- met_vars_all[met_vars_all %in% preds_stepwise_cutoff1]
+# remove CAP9, GWT8_Z500, CAP27, GWT26_SLP from met_vars_stepwise
+met_vars_stepwise <- met_vars_stepwise[!met_vars_stepwise %in% c("CAP9", "GWT8_Z500", "GWT26_SLP", "CAP27", "WD_8_1d")]
+#met_vars_stepwise <- met_vars_stepwise[!met_vars_stepwise %in% c("CAP9", "GWT8_Z500", "GWT26_SLP", "GWT26_Z500")]
+#met_vars_stepwise <- met_vars_stepwise[!met_vars_stepwise %in% c("CAP27", "GWT8_Z500", "GWT26_SLP", "GWT26_Z500")]
 
 # remove met_vars_stepwise from preds_stepwise
 spat_vars_all <- name_table$name_new[name_table$art == "spat"]
 spat_vars_stepwise <- spat_vars_all[spat_vars_all %in% preds_stepwise_cutoff1]
+# remove WD_8_1d from spat_vars_stepwise
 
 rm(met_vars_all, spat_vars_all, preds_stepwise_cutoff1)
 
@@ -664,32 +681,32 @@ result <- LUR_int_model(
   plot_lim = c(-4.5,6)
 )
 
-dates = c("2024-09-05")
-dates = c("2024-08-14")
-dates = c("2024-08-27")
-dates = c("2024-08-29")
+coef_df <- broom::tidy(result$model) |> 
+  filter(term != "(Intercept)") |>  # Remove intercept to focus on predictors
+  mutate(significant = p.value < 0.05)
+write.csv(coef_df, paste0("../results/models/", model_type_short, "/coef_df.csv"), row.names = FALSE)
 
-
-
+dates = c("2024-09-05", "2024-08-14", "2024-08-27", "2024-08-29")
 for (date in dates) {
   predict_temperature_map(
     date = date,
     daynight = "n",
     meteo_dir = "../data/Geodata/Meteo_daily",
     lulc_dir = "../data/Geodata/LULCTopo_Gauss",
-    output_path = paste0("../results/models/", model_type_short, "/"),
-    uhi_range = c(-1.3, 5),
-    plot = F
+    output_path = paste0("../results/models/", model_type_short, "/")
   )
 }
 
 plot_temperature_map(
   model_type_short = model_type_short,
   dates = dates,
-  uhi_range = c(-4, 6.5),
+  uhi_range = c(-2, 7),
   pal = c("#000004", "#51127C", "#B73779", "#FC8961", "#FCFDBF")
 )
+
 ```
+
+
 # Model with predictors from Stepwise variable selection - reduced variable set - AND WTCs interacting with met variables
 ```{r}
 source("../R/LUR_int_model.R")
@@ -748,6 +765,7 @@ plot_temperature_map(
   pal = c("#000004", "#51127C", "#B73779", "#FC8961", "#FCFDBF")
 )
 ```
+
 ```{r}
 folder <- "../data/Geodata/Meteo_daily - Kopie/"
 name_table <- read.csv("../data/final_predictors/predictors_oldnames_mapping.csv", stringsAsFactors = FALSE)
@@ -998,4 +1016,87 @@ predictors <- combined |>
 
 ```
 
+
+Boxplots with model comparisons per measurement site
+```{r}
+# load model results
+results_LUR_B0 <- readRDS("../results/models/LUR_B0/result_list.rds")
+results_LUR_T0 <- readRDS("../results/models/LUR_T0/result_list.rds")
+results_LUR_Tplus <- readRDS("../results/models/LUR_Tplus/result_list.rds")
+results_LUR_Tstep <- readRDS("../results/models/LUR_Tstep/result_list.rds")
+
+residuals_BE <- results_LUR_B0$test_data |>
+  select(Log_NR, Location, residuals, LU_7) |>
+  mutate(model = "LUR_B0")
+
+residuals_TH <- results_LUR_T0$test_data |>
+  select(Log_NR, Location, residuals, LU_7) |>
+  mutate(model = "LUR_T0")
+
+residuals_TH_plus <- results_LUR_Tplus$test_data |>
+  select(Log_NR, Location, residuals, LU_7) |>
+  mutate(model = "LUR_Tplus")
+
+residuals_TH_Step <- results_LUR_Tstep$test_data |>
+  select(Log_NR, Location, residuals, LU_7) |>
+  mutate(model = "LUR_Tstep")
+
+
+residuals_all <- bind_rows(residuals_TH, residuals_TH_plus, residuals_TH_Step)
+
+ggplot() +
+  geom_hline(yintercept = 0, color = "black", size = 0.5) +
+  geom_boxplot(data = residuals_all, aes(x = as.factor(Log_NR), y = residuals, color = model, fill = model),
+               outlier.size = 0.8, alpha = 0.9) +
+  labs(
+    x = "Measurement Site",
+    y = "Residuals (Observed - Predicted)",
+    fill = "Model"
+  ) +
+  scale_color_manual(values = c("LUR_T0" = "#773399", "LUR_Tplus" = "#449999", "LUR_Tstep" = "#bb4422")) +
+  scale_fill_manual(values = c("LUR_T0" = "#bb77dd", "LUR_Tplus" = "#88dddd", "LUR_Tstep" = "#ff8866")) +
+  theme_minimal(base_size = 14) +
+  # color not in the legend
+  guides(color = "none") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  )
+
+ggsave("../results/Analysis/residuals_boxplot_per_model.png", width = 10, height = 4.5, dpi = 600)
+
+```
+
+
+```{r}
+# Create order of Log_NR based on LU_7
+log_nr_order <- residuals_all |>
+  distinct(Log_NR, LU_7) |>
+  arrange(LU_7) |>
+  pull(Log_NR)
+
+# Apply ordered factor to Log_NR
+residuals_all <- residuals_all |>
+  mutate(Log_NR = factor(Log_NR, levels = log_nr_order))
+
+ggplot() +
+  geom_hline(yintercept = 0, color = "black", size = 0.5) +
+  geom_boxplot(data = residuals_all, aes(x = Log_NR, y = residuals, color = model, fill = model),
+               outlier.size = 0.8, alpha = 0.9) +
+  labs(
+    x = "Measurement Site",
+    y = "Residuals (Observed - Predicted) [K]",
+    fill = "Model"
+  ) +
+  scale_color_manual(values = c("LUR_T0" = "#773399", "LUR_Tplus" = "#449999", "LUR_Tstep" = "#bb4422")) +
+  scale_fill_manual(values = c("LUR_T0" = "#bb77dd", "LUR_Tplus" = "#88dddd", "LUR_Tstep" = "#ff8866")) +
+  theme_minimal(base_size = 13) +
+  guides(color = "none") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  )
+
+ggsave("../results/Analysis/residuals_boxplot_per_model_ordered.png", width = 10, height = 4.5, dpi = 600)
+```
 

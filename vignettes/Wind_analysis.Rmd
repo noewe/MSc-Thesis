@@ -218,8 +218,203 @@ ggwindrose(
 )
 ggsave("../results/Windroses/Wind_Rose_Lake_night_UHIneg.png", width = 6, height = 5, dpi = 300)
 ```
+# Wind roses for representative nights
+```{r}
+rainy <- data_wind |>
+  filter(hour(time) >= 22 | hour(time) <= 6) |>
+  filter(date(time) == as.POSIXct("2024-09-05"))
+ggwindrose(
+  speed = rainy$wind_vel,
+  direction = rainy$wind_dir,
+  speed_cuts = c(0, 1, 2, 3, 5, 7.5),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "2024-09-05 / rainy",
+) 
+# + labs(
+#   subtitle = "May-Oct 2024, hourly data",
+#   #caption = "Source: MeteoSwiss"
+# )
+ggsave("../results/Windroses/Wind_Rose_2024-09-05.png", width = 6, height = 5, dpi = 300)
+
+dry_windy <- data_wind |>
+  filter(hour(time) >= 22 | hour(time) <= 6) |>
+  filter(date(time) == as.POSIXct("2024-08-14"))
+ggwindrose(
+  speed = dry_windy$wind_vel,
+  direction = dry_windy$wind_dir,
+  speed_cuts = c(0, 1, 2, 3, 5, 7.5),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "2024-08-14 / dry + windy",
+)
+ggsave("../results/Windroses/Wind_Rose_2024-08-14.png", width = 6, height = 5, dpi = 300)
+
+changeable <- data_wind |>
+  filter(hour(time) >= 22 | hour(time) <= 6) |>
+  filter(date(time) == as.POSIXct("2024-08-27"))
+ggwindrose(
+  speed = changeable$wind_vel,
+  direction = changeable$wind_dir,
+  speed_cuts = c(0, 1, 2, 3, 5, 7.5),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "2024-08-27 / changeable",
+)
+ggsave("../results/Windroses/Wind_Rose_2024-08-27.png", width = 6, height = 5, dpi = 300)
+
+high_rad <- data_wind |>
+  filter(hour(time) >= 22 | hour(time) <= 6) |>
+  filter(date(time) == as.POSIXct("2024-08-29"))
+ggwindrose(
+  speed = high_rad$wind_vel,
+  direction = high_rad$wind_dir,
+  speed_cuts = c(0, 1, 2, 3, 5, 7.5),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "2024-08-29 / high radiation",
+)
+ggsave("../results/Windroses/Wind_Rose_2024-08-29.png", width = 6, height = 5, dpi = 300)
+```
+# wind roses for clusters
+```{r}
+data_wind_clusters <- data_wind |>
+  group_by(time) |>
+  summarise(wind_dir = mean(wind_dir, na.rm = TRUE),
+          wind_vel = mean(wind_vel, na.rm = TRUE),
+          wind_dir_lake = mean(wind_dir_lake, na.rm = TRUE),
+          wind_vel_lake = mean(wind_vel_lake, na.rm = TRUE)) |>
+  ungroup() |>
+  filter(hour(time) >= 22 | hour(time) <= 6) |>
+  mutate(time = as.Date(time)) |>
+  left_join(time_cluster_df, by = "time") |>
+  filter(!is.na(time_cluster))
+
+rainy <- data_wind_clusters |>
+  filter(time_cluster == "0")
+
+dry_windy <- data_wind_clusters |>
+  filter(time_cluster == "3")
+
+changeable <- data_wind_clusters |>
+  filter(time_cluster == "1")
+
+high_rad <- data_wind_clusters |>
+  filter(time_cluster == "2")
+
+ggwindrose(
+  speed = rainy$wind_vel,
+  direction = rainy$wind_dir,
+  speed_cuts = c(0, 2, 5, 10, 20, 30),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Rainy",
+) 
+ggsave("../results/Windroses/Wind_Rose_rainy.png", width = 6, height = 5, dpi = 300)
+ggwindrose(
+  speed = dry_windy$wind_vel,
+  direction = dry_windy$wind_dir,
+  speed_cuts = c(0, 2, 5, 10, 20, 30),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Dry + windy",
+) 
+ggsave("../results/Windroses/Wind_Rose_dry_windy.png", width = 6, height = 5, dpi = 300)
+ggwindrose(
+  speed = changeable$wind_vel,
+  direction = changeable$wind_dir,
+  speed_cuts = c(0, 2, 5, 10, 20, 30),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Changeable",
+) 
+ggsave("../results/Windroses/Wind_Rose_changeable.png", width = 6, height = 5, dpi = 300)
+ggwindrose(
+  speed = high_rad$wind_vel,
+  direction = high_rad$wind_dir,
+  speed_cuts = c(0, 2, 5, 10, 20, 30),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "High radiation",
+)
+ggsave("../results/Windroses/Wind_Rose_high_rad.png", width = 6, height = 5, dpi = 300)
+```
 
 
+```{r}
+wind_10min <- readRDS("../data/IDAWEB/MeteoCH_Thun.rds") |>
+  select(time, wind_vel_10min_kmh, wind_dir_10min)
+wind_10min_clusters <- wind_10min |>
+  filter(hour(time) >= 22 | hour(time) <= 6) |>
+  mutate(time = as.Date(time)) |>
+  left_join(time_cluster_df, by = "time") |>
+  filter(!is.na(time_cluster))
+
+rainy <- wind_10min_clusters |>
+  filter(time_cluster == "0")
+
+dry_windy <- wind_10min_clusters |>
+  filter(time_cluster == "3")
+
+changeable <- wind_10min_clusters |>
+  filter(time_cluster == "1")
+
+high_rad <- wind_10min_clusters |>
+  filter(time_cluster == "2")
+
+ggwindrose(
+  speed = rainy$wind_vel_10min_kmh,
+  direction = rainy$wind_dir,
+  speed_cuts = c(0, 1, 2, 5, 10, 20, 30),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Rainy",
+) 
+ggsave("../results/Windroses/Wind_Rose_rainy_10min.png", width = 6, height = 5, dpi = 300)
+
+ggwindrose(
+  speed = dry_windy$wind_vel_10min_kmh,
+  direction = dry_windy$wind_dir,
+  speed_cuts = c(0, 1, 2, 5, 10, 20, 30),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Dry + windy",
+)
+ggsave("../results/Windroses/Wind_Rose_dry_windy_10min.png", width = 6, height = 5, dpi = 300)
+
+ggwindrose(
+  speed = changeable$wind_vel_10min_kmh,
+  direction = changeable$wind_dir,
+  speed_cuts = c(0, 1, 2, 5, 10, 20, 30),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "Changeable",
+)
+ggsave("../results/Windroses/Wind_Rose_changeable_10min.png", width = 6, height = 5, dpi = 300)
+
+ggwindrose(
+  speed = high_rad$wind_vel_10min_kmh,
+  direction = high_rad$wind_dir,
+  speed_cuts = c(0, 1, 2, 5, 10, 20, 30),
+  legend_title = "Wind speed (km/h)",
+  calm_wind = 0,
+  n_col = 1,
+  plot_title = "High radiation",
+)
+ggsave("../results/Windroses/Wind_Rose_high_rad_10min.png", width = 6, height = 5, dpi = 300)
+
+```
 
 ```{r}
 # Correlate wind speed and direction with UHI

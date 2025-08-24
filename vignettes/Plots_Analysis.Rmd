@@ -5,7 +5,7 @@ output: html_document
 
 ```{r, echo  FALSE, message = FALSE}
 source("../R/load_packages.R")
-load_packages(c("ggplot2", "dplyr", "tidyr", "terra", "stringr"))
+load_packages(c("ggplot2", "dplyr", "tidyr", "terra", "stringr", "ggspatial"))
 ```
 
 1. Geospatial predictors range
@@ -122,7 +122,7 @@ ggsave("../results/Analysis/Geospatial_Predictors_Range.png", width = 5.5, heigh
 ```{r}
 # Load data
 hourly <- readRDS("../data/final_predictors/all_data_hourly.rds") |>
-  select(time, Log_NR,  UHI, air_temp_LCD, NORD_CHTOPO, OST_CHTOPO, LV_03_N, LV_03_E, Location, LCZ, LU_3, LU_7)
+  select(time, Log_NR,  UHI, UHI_LCD, air_temp_LCD, NORD_CHTOPO, OST_CHTOPO, LV_03_N, LV_03_E, Location, LCZ, LU_3, LU_7)
 
 diurnal_JAS <- hourly |>
   filter(month(time) %in% c(6, 7, 8)) |>
@@ -130,7 +130,9 @@ diurnal_JAS <- hourly |>
   group_by(hour, Log_NR) |>
   summarise(
     UHI = mean(UHI, na.rm = TRUE),
+    UHI_LCD = mean(UHI_LCD, na.rm = TRUE),
     air_temp_LCD = mean(air_temp_LCD, na.rm = TRUE),
+    Location = first(Location),
     NORD_CHTOPO = first(NORD_CHTOPO),
     OST_CHTOPO = first(OST_CHTOPO),
     LV_03_N = first(LV_03_N),
@@ -147,6 +149,8 @@ diurnal_MJJASO <- hourly |>
   group_by(hour, Log_NR) |>
   summarise(
     UHI = mean(UHI, na.rm = TRUE),
+    UHI_LCD = mean(UHI_LCD, na.rm = TRUE),
+    Location = first(Location),
     air_temp_LCD = mean(air_temp_LCD, na.rm = TRUE),
     NORD_CHTOPO = first(NORD_CHTOPO),
     OST_CHTOPO = first(OST_CHTOPO),
@@ -160,13 +164,985 @@ diurnal_MJJASO <- hourly |>
 ```
 
 ```{r}
+# Plot diurnal UHI for JAS
+diurnal_JAS_LU_7 <- diurnal_JAS |>
+  group_by(hour, LU_7) |>
+  summarize(
+    UHI = mean(UHI_LCD, na.rm = TRUE),
+    UHI_lower = quantile(UHI_LCD, probs = 0.05, na.rm = TRUE), # 5th percentile
+    UHI_upper = quantile(UHI_LCD, probs = 0.95, na.rm = TRUE)  # 95th percentile
+  ) |>
+  mutate(shifted_hour = (hour + 12) %% 24)
+
+  ggplot(data = diurnal_JAS_LU_7, aes(x = shifted_hour, y = UHI, color = LU_7, fill = LU_7)) +
+  geom_ribbon(aes(ymin = UHI_lower, ymax = UHI_upper), alpha = 0.2, color = NA, show.legend = FALSE) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.1) +
+  labs(
+    title = "Mean UHI per Land Use, JJA 2024",
+    subtitle = "Reference site: Log_401 MeteoCH 3m",
+    x = "hour of day",
+    y = "UHI [K]",
+    color = "Land Use"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 23, by = 2),
+    labels = c(seq(12, 23, by = 2), seq(0, 11, by = 2))
+  ) +
+  scale_y_continuous(limits = c(-2.8, 2.2)) +
+  scale_color_manual(
+    values = c("dense urban" = "grey20", "green urban" = "orange", "forest" = "darkgreen", "water" = "#2288cc")
+  ) +
+  scale_fill_manual(
+    values = c("dense urban" = "grey20", "green urban" = "orange", "forest" = "darkgreen", "water" = "#2288cc")
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10)
+  )
+ggsave("../results/Measurement Season 2024/Diurnal_UHI_JAS_2024.png", width = 8, height = 5, dpi = 300)
+
+
+
+diurnal_MJJASO_LU_7 <- diurnal_MJJASO |>
+  group_by(hour, LU_7) |>
+  summarize(
+    UHI = mean(UHI_LCD, na.rm = TRUE),
+    UHI_lower = quantile(UHI_LCD, probs = 0.05, na.rm = TRUE), # 5th percentile
+    UHI_upper = quantile(UHI_LCD, probs = 0.95, na.rm = TRUE)  # 95th percentile
+  ) |>
+  mutate(shifted_hour = (hour + 12) %% 24)
+
+  ggplot(data = diurnal_MJJASO_LU_7, aes(x = shifted_hour, y = UHI, color = LU_7, fill = LU_7)) +
+  #geom_ribbon(aes(ymin = UHI_lower, ymax = UHI_upper), alpha = 0.2, color = NA, show.legend = FALSE) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.1) +
+  labs(
+    title = "Mean UHI per Land Use, MJJASO 2024",
+    subtitle = "Reference site: Log_401 MeteoCH 3m",
+    x = "hour of day",
+    y = "UHI [K]",
+    color = "Land Use"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 23, by = 2),
+    labels = c(seq(12, 23, by = 2), seq(0, 11, by = 2))
+  ) +
+  scale_y_continuous(limits = c(-2.8, 2.2)) +
+  scale_color_manual(
+    values = c("dense urban" = "grey20", "green urban" = "orange", "forest" = "darkgreen", "water" = "#2288cc")
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10)
+  )
+ggsave("../results/Measurement Season 2024/Diurnal_UHI_MJJASO_2024.png", width = 8, height = 5, dpi = 300)
+```
+same plots but with all loggers UHI added
+```{r}
+ggplot() +
+  # Background: all UHI lines, semi-transparent
+  geom_line(
+    data = diurnal_MJJASO |>
+      filter(LU_7 %in% c("dense urban", "green urban", "forest", "water")) |>
+      mutate(shifted_hour = (hour + 12) %% 24),
+    aes(x = shifted_hour, y = UHI_LCD, group = interaction(LU_7, Log_NR), color = LU_7),
+    alpha = 0.4, linewidth = 0.3
+  ) +
+
+  # Foreground: summarized mean UHI lines
+  geom_line(
+    data = diurnal_MJJASO_LU_7,
+    aes(x = shifted_hour, y = UHI, color = LU_7),
+    linewidth = 1
+  ) +
+  
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.1) +
+  labs(
+    title = "Mean UHI per Land Use, MJJASO 2024",
+    subtitle = "Reference site: Log_401 MeteoCH 3m",
+    x = "hour of day",
+    y = "UHI [K]",
+    color = "Land Use"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 23, by = 2),
+    labels = c(seq(12, 23, by = 2), seq(0, 11, by = 2))
+  ) +
+  scale_y_continuous(limits = c(-2.8, 3)) +
+  scale_color_manual(
+    values = c(
+      "dense urban" = "grey20",
+      "green urban" = "orange",
+      "forest" = "darkgreen",
+      "water" = "#2288cc"
+    )
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10)
+  )
+ggsave("../results/Measurement Season 2024/Diurnal_UHI_MJJASO_2024_all_loggers.png", width = 8, height = 5, dpi = 300)
+
+
+# same for JAS
+ggplot() +
+  # Background: all UHI lines, semi-transparent
+  geom_line(
+    data = diurnal_JAS |>
+      filter(LU_7 %in% c("dense urban", "green urban", "forest", "water")) |>
+      mutate(shifted_hour = (hour + 12) %% 24),
+    aes(x = shifted_hour, y = UHI_LCD, group = interaction(LU_7, Log_NR), color = LU_7),
+    alpha = 0.4, linewidth = 0.3
+  ) +
+
+  # Foreground: summarized mean UHI lines
+  geom_line(
+    data = diurnal_JAS_LU_7,
+    aes(x = shifted_hour, y = UHI, color = LU_7),
+    linewidth = 1
+  ) +
+  
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.1) +
+  labs(
+    title = "Mean UHI per Land Use, JJA 2024",
+    subtitle = "Reference site: Log_401 MeteoCH 3m",
+    x = "hour of day",
+    y = "UHI [K]",
+    color = "Land Use"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 23, by = 2),
+    labels = c(seq(12, 23, by = 2), seq(0, 11, by = 2))
+  ) +
+  scale_y_continuous(limits = c(-2.8, 3)) +
+  scale_color_manual(
+    values = c(
+      "dense urban" = "grey20",
+      "green urban" = "orange",
+      "forest" = "darkgreen",
+      "water" = "#2288cc"
+    )
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10))
+
+ggsave("../results/Measurement Season 2024/Diurnal_UHI_JAS_2024_all_loggers.png", width = 8, height = 5, dpi = 300)
+```
+
+same plots for all 7 LU types
+```{r}
+# same plots but with all loggers UHI added
+ggplot() +
+  # Background: all UHI lines, semi-transparent
+  geom_line(
+    data = diurnal_MJJASO |>
+      mutate(shifted_hour = (hour + 12) %% 24),
+    aes(x = shifted_hour, y = UHI_LCD, group = interaction(LU_7, Log_NR), color = LU_7),
+    alpha = 0.4, linewidth = 0.3
+  ) +
+
+  # Foreground: summarized mean UHI lines
+  geom_line(
+    data = diurnal_MJJASO_LU_7,
+    aes(x = shifted_hour, y = UHI, color = LU_7),
+    linewidth = 1
+  ) +
+  
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.1) +
+  labs(
+    title = "Mean UHI per Land Use, MJJASO 2024",
+    subtitle = "Reference site: Log_401 MeteoCH 3m",
+    x = "hour of day",
+    y = "UHI [K]",
+    color = "Land Use"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 23, by = 2),
+    labels = c(seq(12, 23, by = 2), seq(0, 11, by = 2))
+  ) +
+  scale_y_continuous(limits = c(-2.8, 3)) +
+  scale_color_manual(
+    values = c(
+      "dense urban" = "grey20",
+      "green urban" = "orange",
+      "rural" = "brown", 
+      "forest" = "darkgreen",
+      "low green" = "#44dd55", 
+      "water" = "#2288cc"
+    )
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10)
+  )
+ggsave("../results/Measurement Season 2024/Diurnal_UHI_MJJASO_2024_all_loggers_LU6.png", width = 8, height = 5, dpi = 300)
+
+
+# same for JAS
+ggplot() +
+  # Background: all UHI lines, semi-transparent
+  geom_line(
+    data = diurnal_JAS |>
+      mutate(shifted_hour = (hour + 12) %% 24),
+    aes(x = shifted_hour, y = UHI_LCD, group = interaction(LU_7, Log_NR), color = LU_7),
+    alpha = 0.4, linewidth = 0.3
+  ) +
+
+  # Foreground: summarized mean UHI lines
+  geom_line(
+    data = diurnal_JAS_LU_7,
+    aes(x = shifted_hour, y = UHI, color = LU_7),
+    linewidth = 1
+  ) +
+  
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.1) +
+  labs(
+    title = "Mean UHI per Land Use, JJA 2024",
+    subtitle = "Reference site: Log_401 MeteoCH 3m",
+    x = "hour of day",
+    y = "UHI [K]",
+    color = "Land Use"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 23, by = 2),
+    labels = c(seq(12, 23, by = 2), seq(0, 11, by = 2))
+  ) +
+  scale_y_continuous(limits = c(-2.8, 3)) +
+  scale_color_manual(
+    values = c(
+      "dense urban" = "grey20",
+      "green urban" = "orange",
+      "rural" = "brown", 
+      "forest" = "darkgreen",
+      "low green" = "#44dd55", 
+      "water" = "#2288cc"
+    )
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10))
+
+ggsave("../results/Measurement Season 2024/Diurnal_UHI_JAS_2024_all_loggers_LU6.png", width = 8, height = 5, dpi = 300)
+
+# same plot for 
+ggplot() +
+  # Background: all UHI lines, semi-transparent
+  geom_line(
+    data = diurnal_JAS |>
+      mutate(shifted_hour = (hour + 12) %% 24),
+    aes(x = shifted_hour, y = UHI_LCD, group = interaction(LU_7, Log_NR), color = LU_7),
+    alpha = 0.4, linewidth = 0.3
+  ) +
+
+  # Foreground: summarized mean UHI lines
+  geom_line(
+    data = diurnal_JAS_LU_7,
+    aes(x = shifted_hour, y = UHI, color = LU_7),
+    linewidth = 1
+  ) +
+  
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.1) +
+  labs(
+    title = "Mean UHI per Land Use, JJA 2024",
+    subtitle = "Reference site: Log_401 MeteoCH 3m",
+    x = "hour of day",
+    y = "UHI [K]",
+    color = "Land Use"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 23, by = 2),
+    labels = c(seq(12, 23, by = 2), seq(0, 11, by = 2))
+  ) +
+  scale_y_continuous(limits = c(-2.8, 3)) +
+  scale_color_manual(
+    values = c(
+      "dense urban" = "grey20",
+      "green urban" = "orange",
+      "rural" = "brown", 
+      "forest" = "darkgreen",
+      "low green" = "#44dd55", 
+      "water" = "#2288cc"
+    )
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10))
+
+ggsave("../results/Measurement Season 2024/Diurnal_UHI_JAS_2024_all_loggers_LU6.png", width = 8, height = 5, dpi = 300)
+    
+```
+
+
+3. Seasonl development
+```{r}
+daily <- readRDS("../data/final_predictors/all_data_daily.rds") |>
+  select(time, daynight, Log_NR, UHI, UHI_LCD, air_temp_LCD, NORD_CHTOPO, OST_CHTOPO, LV_03_N, LV_03_E, Location, LCZ, LU_3, LU_7,
+         AT, PP, GR, WS)
+```
+
+```{r}
+coeff_y <- 10 # coefficient for air temperature to match UHI scale
+# Plot seasonal development of UHI
+
+daily_met <- daily |>
+  group_by(time) |>
+  summarise(
+    air_temp_LCD = mean(air_temp_LCD, na.rm = TRUE),
+    AT = mean(AT, na.rm = TRUE),
+    UHI_LCD = mean(UHI_LCD, na.rm = TRUE),
+    PP = mean(PP, na.rm = TRUE),
+    GR = mean(GR, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+halfdaily_met <- daily |>
+    #filter(month(time) == 7) |>
+  group_by(time, daynight) |>
+  summarise(
+    UHI_LCD = mean(UHI_LCD, na.rm = TRUE),
+    air_temp_LCD = mean(air_temp_LCD, na.rm = TRUE),
+    AT = mean(AT, na.rm = TRUE),
+    PP = sum(PP),
+    GR = mean(GR, na.rm = TRUE),
+    .groups = "drop"
+  )
+  
+# Add variables for color mapping
+daily_met <- daily_met |>
+  mutate(var_air = "Air Temp", var_pp = "Precipitation")
+
+halfdaily_met <- halfdaily_met |>
+  mutate(var_uhi = ifelse(daynight == "d", "UHI Day", "UHI Night"))
+
+
+p1 <- ggplot() +
+  geom_line(data = daily_met, aes(x = time, y = air_temp_LCD/coeff_y, color = var_air), 
+            linewidth = 0.8, show.legend = TRUE) +
+    geom_col(data = daily_met, aes(x = time, y = PP/coeff_y, fill = var_pp), 
+           width = 1, show.legend = TRUE) +
+    scale_y_continuous(
+    name = "UHI [K]",
+    sec.axis = sec_axis(~ . * coeff_y, name = "Air Temp [°C] / Precipitation [mm]")
+  ) +
+  geom_line(data = halfdaily_met, aes(x = time, y = UHI_LCD, color = var_uhi), 
+            linewidth = 0.5, show.legend = TRUE) +
+  geom_hline(yintercept = 0, color = "#333333", linewidth = 0.1) +
+
+  scale_x_datetime(
+    date_labels = "%b",
+    date_breaks = "1 month",
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  scale_color_manual(
+    name = "",
+    values = c("Air Temp" = "#bb5555", "UHI Day" = "#ffbb11", "UHI Night" = "#115588")
+  ) +
+  scale_fill_manual(
+    name = "",
+    values = c("Precipitation" = "lightblue")
+  ) +
+  labs(
+    title = "Daily Mean UHI, Air Temperature and Precipitation",
+    subtitle = "Reference site: Log_401 MeteoCH 3m",
+    x = "Time",
+    y = "UHI [K]"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 14, face = "bold"),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10),
+    legend.title = element_text(size = 11),
+    legend.text = element_text(size = 10)
+  )
+
+
+p1 <- ggplot() +
+  geom_line(data = daily_met, aes(x = time, y = AT/coeff_y, color = "air temperature"),  linewidth = 0.8) +
+  geom_col(data = daily_met, aes(x = time, y = PP/coeff_y, fill = "precipitation"),  linewidth = 0.8) +
+  scale_y_continuous(
+    name = "UHI [K]",
+    sec.axis = sec_axis(transform = ~ .*coeff_y, name = "Air Temperature [°C] / Precipitation [mm]")
+  ) +
+  geom_line(data = halfdaily_met, aes(x = time, y = UHI_LCD, color = daynight), linewidth = 0.5) +
+  geom_hline(yintercept = 0, color = "#333333", linewidth = 0.1) +
+  scale_x_datetime(
+    date_labels = "%b",
+    date_breaks = "1 month",
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Daily Mean UHI, Air Temperature and Precipitation",
+    subtitle = "UHI reference site: Log_401 MeteoCH 3m \nTemperature and precipitation measurements: MeteoSwiss",
+    x = "Time",
+    y = "UHI [K]"
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c("d" = "#ffbb11", "n" = "#115588",
+                               "air temperature" = "#bb5555"),
+                     labels = c("n" = "mean UHI night", "d" = "mean UHI day",
+                                "air temperature" = "air temperature"),
+                     name = "") +
+  scale_fill_manual(values = c("precipitation" = "lightblue"), name = "") +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10.5),
+    legend.text = element_text(size = 12)
+  )
+print(p1)
+ggsave("../results/Measurement Season 2024/MJJASO_UHI_AirTemp.png", width = 12, height = 5, dpi = 300)
 
 ```
 
 
+4. Maps
+```{r}
+background <- terra::rast("../data/Geodata/map_background.tif")
+#reproject to WGS84
+background <- terra::project(background, "EPSG:4326")
+lu_colors <- c(
+  "BUL" = "#888888",  # Built-up
+  "FO"  = "#81B189",  # Forest
+  "GA"  = "#BDD4AC",  # Garden
+  "SE"  = "#bbbbbb",  # Sealed
+  "WA"  = "#bbe9ff",  # Water
+  "AC"  = "#BDD4AC"   # Agriculture
+)
+
+hourly <- readRDS("../data/final_predictors/all_data_hourly.rds") |>
+  dplyr::select(time, Log_NR,  UHI, UHI_LCD, air_temp_LCD, NORD_CHTOPO, OST_CHTOPO, LV_03_N, LV_03_E, Location, LCZ, LU_3, LU_7)
+
+daily <- readRDS("../data/final_predictors/all_data_daily.rds") |>
+  dplyr::select(time, Log_NR,  UHI, UHI_LCD, air_temp_LCD, AT, NORD_CHTOPO, OST_CHTOPO, LV_03_N, LV_03_E, Location, LCZ, LU_3, LU_7, daynight)
+
+aug_mean_night <- daily |>
+  dplyr::filter(time >= as.POSIXct("2024-08-05") & time < as.POSIXct("2024-09-07"),
+                daynight=="n") |>
+  dplyr::group_by(Log_NR) |>
+  dplyr::summarise(
+    UHI = mean(UHI_LCD, na.rm = TRUE),
+    air_temp_LCD = mean(air_temp_LCD, na.rm = TRUE),
+    NORD_CHTOPO = first(NORD_CHTOPO),
+    OST_CHTOPO = first(OST_CHTOPO),
+    LV_03_N = first(LV_03_N),
+    LV_03_E = first(LV_03_E),
+    LU_7 = first(LU_7),
+    .groups = "drop"
+  ) |>
+  #extract the 3 last characters from Log_NR
+  dplyr::mutate(Log_NR = stringr::str_sub(Log_NR, -3))
+
+# for correct mapping
+aug_mean_night$Log_NR[1] <- "401, 402"
+aug_mean_night$Log_NR[2] <- "401, 402"
+
+# convert "background" raster to data frame for ggplot
+background_df <- as.data.frame(terra::as.data.frame(background, xy = TRUE, na.rm = TRUE))
+
+ggplot() +
+  geom_raster(data = background_df, aes(x = x, y = y, fill = label)) +
+  geom_point(data = aug_mean_night, aes(x = OST_CHTOPO, y = NORD_CHTOPO, color = LU_7), size = 3) +
+  geom_text(data = aug_mean_night, aes(x = OST_CHTOPO, y = NORD_CHTOPO, label = Log_NR), 
+            nudge_y = -0.0015, size = 3, color = "#222222", check_overlap = FALSE) +
+  scale_fill_manual(
+    values = lu_colors,
+    labels = c("BUL" = "Built-up", "FO" = "Forest", "GA" = "Vegetated",
+               "SE" = "Sealed", "WA" = "Water", "AC" = "Vegetated")
+  ) +
+  scale_color_manual(
+    values = c(
+      "dense urban" = "grey20",
+      "green urban" = "orange",
+      "rural" = "brown", 
+      "forest" = "darkgreen",
+      "low green" = "#44dd55", 
+      "water" = "#2288cc"
+    )
+  ) +
+  coord_sf(crs = "EPSG:4326", expand = FALSE,
+           xlim = c(7.575, 7.675), ylim = c(46.713, 46.792)) +
+  labs(
+    title = "Measurement Network",
+    fill = "Land Cover",
+    color = "Station Land Use Type",
+    caption = "CRS: EPSG:4326 — WGS84"
+  ) +
+  annotation_north_arrow(location = "br", which_north = "true",
+                         style = north_arrow_fancy_orienteering) +
+  annotation_scale(location = "bl", width_hint = 0.25,
+                   bar_cols = c("grey60", "white")) +
+  scale_y_continuous(breaks = seq(46.71, 46.79, by = 0.02)) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    axis.title = element_blank(),
+    axis.text.y = element_text(angle = 90),
+    plot.caption = element_text(hjust = 0.5, size = 9, face = "italic", margin = margin(t = 10))
+  )
 
 
-3. Maps
+ggsave("../results/Measurement Season 2024/Logger_Locations_Map.png", width = 8, height = 6, dpi = 600)
+
+#-------------------------------------------------------------------------------
+# add DEM
+dem <- terra::rast("../data/Geodata/LULCTopo_unbuffered/DEM.tif")
+dem <- terra::project(dem, "EPSG:4326")
+dem_df <- as.data.frame(terra::as.data.frame(dem, xy = TRUE, na.rm = TRUE)) |>
+  mutate(altitude = `swissalti3d_2019_2594-1194_2_2056_5728`)
+# Generate contours at 10-meter intervals
+contours <- as.contour(dem, levels = seq(minmax(dem)[1], minmax(dem)[2], by = 25))
+# Convert to sf for plotting or exporting
+contours_sf <- sf::st_as_sf(contours)
+
+library(ggspatial)  # for annotation_scale() and annotation_north_arrow()
+
+ggplot() +
+  geom_raster(data = background_df, aes(x = x, y = y, fill = label)) +
+  geom_sf(data = contours_sf, aes(color = level)) +
+  scale_color_viridis_c(name = "Elevation [m]", option = "rocket") +
+  ggnewscale::new_scale_color() +
+  geom_point(data = aug_mean_night, aes(x = OST_CHTOPO, y = NORD_CHTOPO, color = LU_7), size = 3) +
+  geom_text(data = aug_mean_night, aes(x = OST_CHTOPO, y = NORD_CHTOPO, label = Log_NR), 
+            nudge_y = -0.0015, size = 3, color = "#222222", check_overlap = FALSE) +
+  scale_fill_manual(values = lu_colors,
+                    labels = c("BUL" = "Built-up", "FO" = "Forest", "GA" = "Garden",
+                               "SE" = "Sealed", "WA" = "Water", "AC" = "Agriculture")) +
+  scale_color_manual(
+    values = c(
+      "dense urban" = "grey20",
+      "green urban" = "orange",
+      "rural" = "brown", 
+      "forest" = "darkgreen",
+      "low green" = "#44dd55", 
+      "water" = "#2288cc"
+    )
+  ) +
+  coord_sf(crs = "EPSG:4326", expand = FALSE,
+           xlim = c(7.575, 7.675), ylim = c(46.713, 46.792)) +
+  labs(
+    title = "Measurement Network",
+    fill = "Land Cover",
+    color = "Station Land Use Type",
+    caption = "CRS: EPSG:4326 — WGS84 | Approx. scale: 1:20,000"
+  ) +
+  annotation_north_arrow(location = "br", which_north = "true",
+                         style = north_arrow_fancy_orienteering) +
+  annotation_scale(location = "bl", width_hint = 0.25, 
+                   bar_cols = c("grey60", "white")) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    axis.title = element_blank(),
+    plot.caption = element_text(hjust = 0.5, size = 9, face = "italic", margin = margin(t = 10))
+  )
+
+ggsave("../results/Measurement Season 2024/Logger_Locations_Map_with_DEM.png", width = 8, height = 6, dpi = 400)
+```
+
+# plot elevation
+```{r}
+dem <- terra::rast("../data/Geodata/LULCTopo_unbuffered/DEM.tif")
+dem <- terra::project(dem, "EPSG:4326")
+dem <- terra::crop(dem, terra::ext(7.575, 7.675, 46.713, 46.792))
+dem_df <- as.data.frame(terra::as.data.frame(dem, xy = TRUE, na.rm = TRUE)) |>
+  mutate(altitude = `swissalti3d_2019_2594-1194_2_2056_5728`)
+
+dem_map <- ggplot() +
+  geom_raster(data = dem_df, aes(x = x, y = y, fill = altitude)) +
+  scale_fill_viridis_c(name = "Elevation [m]", option = "D") +
+  coord_sf(crs = "EPSG:4326", expand = FALSE) +
+  labs(
+    fill = "Elevation [m]"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "right",
+        axis.title = element_blank(),
+        axis.text = element_blank())
+plot(dem_map)
+ggsave("../results/Measurement Season 2024/Elevation_Map.png", width = 4, height = 4.5, dpi = 400)
+
+# same plot but with measurement locations as small white dots
+dem_map_LCD <- ggplot() +
+  geom_raster(data = dem_df, aes(x = x, y = y, fill = altitude)) +
+  #scale_fill_viridis_c(name = "Elevation [m]", option = "D") +
+    scale_fill_gradientn(
+    colours = terrain.colors(100),
+    name = "Elevation [m]"
+  ) +
+  coord_sf(crs = "EPSG:4326", expand = FALSE) +
+  labs(
+    fill = "Elevation [m]"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "right",
+        axis.title = element_blank(),
+        axis.text = element_blank()) +
+  geom_point(data = aug_mean_night, aes(x = OST_CHTOPO, y = NORD_CHTOPO), color = "#f9f9f9", size = 0.8)
+dem_map_LCD
+
+ggsave("../results/Measurement Season 2024/Elevation_Map_LCD.png", width = 4, height = 4.5, dpi = 400)
+
+```
+
+# topography map
+```{r}
+library(leaflet)
+load_packages(c("webshot", "leaflet"))
+
+webshot::install_phantomjs()
+
+url = "https://wms.geo.admin.ch/"
+leaflet_map <- leaflet() |>
+    addWMSTiles(url,
+    #layers = "ch.swisstopo.pixelkarte-farbe",
+    layers = "ch.swisstopo.swissalti3d-reliefschattierung" ,
+    options =  WMSTileOptions(format = "image/png",
+    transparent = TRUE)
+    ) |>
+  # add square bounding box around the study area
+    addRectangles(
+      lng1 = 7.575, lat1 = 46.713,
+      lng2 = 7.675, lat2 = 46.792,
+      color = "red", weight = 4, opacity = 1,
+    ) |>
+  #fitBounds(lng1 = 7.475, lat1 = 46.613, lng2 = 7.775, lat2 = 46.892)
+  #fitBounds(lng1 = 7.375, lat1 = 46.513, lng2 = 7.875, lat2 = 46.992) # large part of the alps
+  fitBounds(lng1 = 5.96, lat1 = 45.82, lng2 = 10.49, lat2 = 47.81) # whole switzerand
+
+leaflet_map
+
+mapshot(
+  leaflet_map,
+  url = NULL,
+  file = "../results/Measurement Season 2024/Topography_map.png",
+  remove_controls = c("zoomControl", "layersControl", "homeButton", "scaleBar",
+    "drawToolbar", "easyButton"),
+  vwidth = 2400, vheight = 1800
+)
+```
+
+
+mean UHI
+```{r}
+lu_colors_grey <- c(
+  "BUL" = "#999999",  # Built-up
+  "FO"  = "#777777",  # Forest
+  "GA"  = "#dddddd",  # Garden
+  "SE"  = "#bbbbbb",  # Sealed
+  "WA"  = "#f9f9f9",  # Water
+  "AC"  = "#dddddd"   # Agriculture
+)
+
+aug_mean_day <- daily |>
+  dplyr::filter(time >= as.POSIXct("2024-08-05") & time < as.POSIXct("2024-09-07"),
+                daynight=="d") |>
+  dplyr::group_by(Log_NR) |>
+  dplyr::summarise(
+    UHI = mean(UHI_LCD, na.rm = TRUE),
+    air_temp_LCD = mean(air_temp_LCD, na.rm = TRUE),
+    NORD_CHTOPO = first(NORD_CHTOPO),
+    OST_CHTOPO = first(OST_CHTOPO),
+    LV_03_N = first(LV_03_N),
+    LV_03_E = first(LV_03_E),
+    LU_7 = first(LU_7),
+    Location = first(Location),
+    .groups = "drop"
+  ) |>
+  #extract the 3 last characters from Log_NR
+  dplyr::mutate(Log_NR = stringr::str_sub(Log_NR, -3)) |>
+  #drop the second row
+  dplyr::filter(Log_NR != "402")
+
+aug_mean_day_ref <- aug_mean_day |>
+  dplyr::filter(Log_NR == "401")
+
+aug_mean_day <- aug_mean_day |>
+  dplyr::filter(Log_NR != "401")
+
+
+aug_mean_night <- daily |>
+  dplyr::filter(time >= as.POSIXct("2024-08-05") & time < as.POSIXct("2024-09-07"),
+                daynight=="n") |>
+  dplyr::group_by(Log_NR) |>
+  dplyr::summarise(
+    UHI = mean(UHI_LCD, na.rm = TRUE),
+    air_temp_LCD = mean(air_temp_LCD, na.rm = TRUE),
+    NORD_CHTOPO = first(NORD_CHTOPO),
+    OST_CHTOPO = first(OST_CHTOPO),
+    LV_03_N = first(LV_03_N),
+    LV_03_E = first(LV_03_E),
+    LU_7 = first(LU_7),
+    .groups = "drop"
+  ) |>
+  #extract the 3 last characters from Log_NR
+  dplyr::mutate(Log_NR = stringr::str_sub(Log_NR, -3)) |>
+  #drop the second row
+  dplyr::filter(Log_NR != "402")
+
+aug_mean_night_ref <- aug_mean_night |>
+  dplyr::filter(Log_NR == "401")
+
+aug_mean_night <- aug_mean_night |>
+  filter(Log_NR != "401")
+
+# PLOTTING -----------------------------------------------
+p1 <- ggplot() +
+  geom_raster(data = background_df, aes(x = x, y = y, fill = label), show.legend = FALSE) +
+  scale_fill_manual(
+    values = lu_colors_grey,
+    labels = c(
+      "BUL" = "Built-up", "FO" = "Forest", "GA" = "Garden",
+      "SE" = "Sealed", "WA" = "Water", "AC" = "Agriculture"
+    )
+  ) +
+  # Reset fill scale before using it again for UHI
+  ggnewscale::new_scale_fill() +
+  geom_point(data = aug_mean_night, 
+             aes(x = OST_CHTOPO, y = NORD_CHTOPO, fill = UHI), 
+             color = "black", size = 4, shape = 21) +
+  # add reference station
+  ggstar::geom_star(data = aug_mean_night_ref, 
+             aes(x = OST_CHTOPO, y = NORD_CHTOPO, fill = UHI), 
+             color = "black", size = 4, starshape = 1) +
+  scale_fill_viridis_c(
+    option = "magma",
+    name = "Mean UHI [K]",
+    labels = scales::number_format(accuracy = 0.1),
+    limits = c(-1.5, 3.3) # Adjust limits to match the expected UHI range
+  ) +
+  coord_sf(crs = "EPSG:4326", expand = FALSE,
+           xlim = c(7.575, 7.675), ylim = c(46.713, 46.792)) +
+  labs(
+    title = "Mean nighttime UHI",
+    subtitle = "2024-08-05 to 2024-09-07 \nReference site: Log_401 MeteoCH 3m"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    axis.title = element_blank(),
+    axis.text = element_blank(),
+    plot.title = element_text(size = 13, face = "bold"),
+    plot.subtitle = element_text(size = 11)
+  )
+
+p2 <- ggplot() +
+  geom_raster(data = background_df, aes(x = x, y = y, fill = label), show.legend = FALSE) +
+  scale_fill_manual(
+    values = lu_colors_grey,
+    labels = c(
+      "BUL" = "Built-up", "FO" = "Forest", "GA" = "Garden",
+      "SE" = "Sealed", "WA" = "Water", "AC" = "Agriculture"
+    )
+  ) +
+  # Reset fill scale before using it again for UHI
+  ggnewscale::new_scale_fill() +
+  geom_point(data = aug_mean_day, 
+             aes(x = OST_CHTOPO, y = NORD_CHTOPO, fill = UHI), 
+             color = "black", size = 4, shape = 21,
+             show.legend = FALSE) +
+    # add reference station
+  ggstar::geom_star(data = aug_mean_night_ref, 
+             aes(x = OST_CHTOPO, y = NORD_CHTOPO, fill = UHI), 
+             color = "black", size = 4, starshape = 1,
+             show.legend = FALSE) +
+  
+  scale_fill_viridis_c(
+    option = "magma",
+    labels = scales::number_format(accuracy = 0.1),
+    limits = c(-1.5, 3.3) # Adjust limits to match the expected UHI range
+  ) +
+  coord_sf(crs = "EPSG:4326", expand = FALSE,
+           xlim = c(7.575, 7.675), ylim = c(46.713, 46.792)) +
+  labs(
+    title = "Mean daytime UHI",
+    subtitle = "2024-08-05 to 2024-09-07 \nReference site: Log_401 MeteoCH 3m",
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    axis.title = element_blank(),
+    axis.text = element_blank(),
+    plot.title = element_text(size = 13, face = "bold"),
+    plot.subtitle = element_text(size = 11)
+  )
+
+cowplot::plot_grid(p2, p1, ncol = 2)
+ggsave("../results/Measurement Season 2024/meanUHI_Aug.png", width = 10, height = 5, dpi = 400)
+```
+
+```{r}
+daily <- readRDS("../data/final_predictors/all_data_daily.rds") |>
+  dplyr::select(time, Log_NR,  UHI, UHI_LCD, air_temp_LCD, AT, NORD_CHTOPO, OST_CHTOPO, LV_03_N, LV_03_E, Location, LCZ, LU_3, LU_7, daynight)
+
+aug_mean_night <- daily |>
+  dplyr::filter(time >= as.POSIXct("2024-08-05") & time < as.POSIXct("2024-09-07"),
+                daynight=="n") |>
+  dplyr::group_by(Log_NR) |>
+  dplyr::summarise(
+    UHI_mean = mean(UHI_LCD, na.rm = TRUE),
+    UHI_max = max(UHI_LCD, na.rm = TRUE),
+    UHI_min = min(UHI_LCD, na.rm = TRUE),
+    AT_mean = mean(AT, na.rm = TRUE),
+    AT_max = max(AT, na.rm = TRUE),
+    AT_min = min(AT, na.rm = TRUE),
+    AT_LCD_mean = mean(air_temp_LCD, na.rm = TRUE),
+    AT_LCD_max = max(air_temp_LCD, na.rm = TRUE),
+    AT_LCD_min = min(air_temp_LCD, na.rm = TRUE),
+    NORD_CHTOPO = first(NORD_CHTOPO),
+    OST_CHTOPO = first(OST_CHTOPO),
+    LV_03_N = first(LV_03_N),
+    LV_03_E = first(LV_03_E),
+    LU_7 = first(LU_7),
+    Location = first(Location),
+    .groups = "drop"
+  ) |>
+  #extract the 3 last characters from Log_NR
+  dplyr::mutate(Log_NR = stringr::str_sub(Log_NR, -3))
+write.csv(aug_mean_night, "../results/Measurement Season 2024/means_night_Aug.csv", row.names = FALSE)
+
+aug_mean_day <- daily |>
+  dplyr::filter(time >= as.POSIXct("2024-08-05") & time < as.POSIXct("2024-09-07"),
+                daynight=="d") |>
+  dplyr::group_by(Log_NR) |>
+  dplyr::summarise(
+    UHI_mean = mean(UHI_LCD, na.rm = TRUE),
+    UHI_max = max(UHI_LCD, na.rm = TRUE),
+    UHI_min = min(UHI_LCD, na.rm = TRUE),
+    AT_mean = mean(AT, na.rm = TRUE),
+    AT_max = max(AT, na.rm = TRUE),
+    AT_min = min(AT, na.rm = TRUE),
+    AT_LCD_mean = mean(air_temp_LCD, na.rm = TRUE),
+    AT_LCD_max = max(air_temp_LCD, na.rm = TRUE),
+    AT_LCD_min = min(air_temp_LCD, na.rm = TRUE),
+    NORD_CHTOPO = first(NORD_CHTOPO),
+    OST_CHTOPO = first(OST_CHTOPO),
+    LV_03_N = first(LV_03_N),
+    LV_03_E = first(LV_03_E),
+    LU_7 = first(LU_7),
+    Location = first(Location),
+    .groups = "drop"
+  ) |>
+  #extract the 3 last characters from Log_NR
+  dplyr::mutate(Log_NR = stringr::str_sub(Log_NR, -3))
+write.csv(aug_mean_day, "../results/Measurement Season 2024/means_day_Aug.csv", row.names = FALSE)
+
+jja_mean_night <- daily |>
+  dplyr::filter(time >= as.POSIXct("2024-06-01") & time < as.POSIXct("2024-09-01"),
+                daynight=="n") |>
+  dplyr::group_by(Log_NR) |>
+  dplyr::summarise(
+    UHI_mean = mean(UHI_LCD, na.rm = TRUE),
+    UHI_max = max(UHI_LCD, na.rm = TRUE),
+    UHI_min = min(UHI_LCD, na.rm = TRUE),
+    AT_mean = mean(AT, na.rm = TRUE),
+    AT_max = max(AT, na.rm = TRUE),
+    AT_min = min(AT, na.rm = TRUE),
+    AT_LCD_mean = mean(air_temp_LCD, na.rm = TRUE),
+    AT_LCD_max = max(air_temp_LCD, na.rm = TRUE),
+    AT_LCD_min = min(air_temp_LCD, na.rm = TRUE),
+    NORD_CHTOPO = first(NORD_CHTOPO),
+    OST_CHTOPO = first(OST_CHTOPO),
+    LV_03_N = first(LV_03_N),
+    LV_03_E = first(LV_03_E),
+    LU_7 = first(LU_7),
+    Location = first(Location),
+    .groups = "drop"
+  ) |>
+  #extract the 3 last characters from Log_NR
+  dplyr::mutate(Log_NR = stringr::str_sub(Log_NR, -3))
+write.csv(jja_mean_night, "../results/Measurement Season 2024/means_night_jja.csv", row.names = FALSE)
+
+jja_mean_day <- daily |>
+  dplyr::filter(time >= as.POSIXct("2024-06-01") & time < as.POSIXct("2024-09-01"),
+                daynight=="d") |>
+  dplyr::group_by(Log_NR) |>
+  dplyr::summarise(
+    UHI_mean = mean(UHI_LCD, na.rm = TRUE),
+    UHI_max = max(UHI_LCD, na.rm = TRUE),
+    UHI_min = min(UHI_LCD, na.rm = TRUE),
+    AT_mean = mean(AT, na.rm = TRUE),
+    AT_max = max(AT, na.rm = TRUE),
+    AT_min = min(AT, na.rm = TRUE),
+    AT_LCD_mean = mean(air_temp_LCD, na.rm = TRUE),
+    AT_LCD_max = max(air_temp_LCD, na.rm = TRUE),
+    AT_LCD_min = min(air_temp_LCD, na.rm = TRUE),
+    NORD_CHTOPO = first(NORD_CHTOPO),
+    OST_CHTOPO = first(OST_CHTOPO),
+    LV_03_N = first(LV_03_N),
+    LV_03_E = first(LV_03_E),
+    LU_7 = first(LU_7),
+    Location = first(Location),
+    .groups = "drop"
+  ) |>
+  #extract the 3 last characters from Log_NR
+  dplyr::mutate(Log_NR = stringr::str_sub(Log_NR, -3))
+write.csv(jja_mean_day, "../results/Measurement Season 2024/means_day_jja.csv", row.names = FALSE)
+
+
+hourly <- readRDS("../data/final_predictors/all_data_hourly.rds") |>
+  dplyr::select(time, Log_NR,  UHI, UHI_LCD, air_temp_LCD, air_temp, NORD_CHTOPO, OST_CHTOPO, LV_03_N, LV_03_E, Location, LCZ, LU_3, LU_7)
+
+jja_mean_night_hourly <- hourly |>
+  dplyr::filter(time >= as.POSIXct("2024-06-01") & time < as.POSIXct("2024-09-01")) |>
+  dplyr::filter(hour(time) >= 22 | hour(time) < 6) |>
+  dplyr::group_by(Log_NR) |>
+  dplyr::summarise(
+    UHI_mean = mean(UHI_LCD, na.rm = TRUE),
+    UHI_max = max(UHI_LCD, na.rm = TRUE),
+    UHI_min = min(UHI_LCD, na.rm = TRUE),
+    AT_mean = mean(air_temp, na.rm = TRUE),
+    AT_max = max(air_temp, na.rm = TRUE),
+    AT_min = min(air_temp, na.rm = TRUE),
+    AT_LCD_mean = mean(air_temp_LCD, na.rm = TRUE),
+    AT_LCD_max = max(air_temp_LCD, na.rm = TRUE),
+    AT_LCD_min = min(air_temp_LCD, na.rm = TRUE),
+    NORD_CHTOPO = first(NORD_CHTOPO),
+    OST_CHTOPO = first(OST_CHTOPO),
+    LV_03_N = first(LV_03_N),
+    LV_03_E = first(LV_03_E),
+    LU_7 = first(LU_7),
+    Location = first(Location),
+    .groups = "drop"
+  ) |>
+  #extract the 3 last characters from Log_NR
+  dplyr::mutate(Log_NR = stringr::str_sub(Log_NR, -3))
+write.csv(jja_mean_night_hourly, "../results/Measurement Season 2024/means_night_jja_hourly.csv", row.names = FALSE)
+```
+
 ```{r}
 
 ```

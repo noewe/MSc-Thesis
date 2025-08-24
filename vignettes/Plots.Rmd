@@ -76,7 +76,6 @@ ggplot_warming <- data_long_hourly |>
   #scale_x_continuous(breaks = seq(0, 23, by = 1)) +
   theme_minimal()
 ggplotly(ggplot_warming)
-
 ```
 
 ## Daily mean over the summer
@@ -90,7 +89,6 @@ daily_summary <- data_long_daily |>
     T_min = min(T_min, na.rm = TRUE),
     T_max = max(T_max, na.rm = TRUE)
   ) 
-
 
 
 # Temperature Plot
@@ -135,7 +133,6 @@ temperature_plot
 # ggsave
 ggsave("../figures/Thun_Gemeinderat/daily_T_plot.png", temperature_plot, width = 12, height = 4)
 ```
-
 
 
 

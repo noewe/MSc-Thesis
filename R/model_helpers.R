@@ -85,7 +85,7 @@ predict_model <- function(model,
   }
   
   ggsave(paste0("../results/models/", model_type_short, "/mainplot_", model_type_short, ".png"),
-         plot = plot, width=6.5, height=4, dpi=300, units = "in", limitsize = FALSE)
+         plot = plot, width=6.5, height=4, dpi=600, units = "in", limitsize = FALSE)
   
   print(plot)
   

@@ -50,6 +50,30 @@ summary(lm_R)
 ```
 
 ```{r}
+# calculate mean daytime bias
+mean_day_bias <- data_402 |>
+  filter(daynight == "d") |>
+  summarise(mean_bias = mean(bias, na.rm = TRUE),
+            min_bias = min(bias, na.rm = TRUE),
+            max_bias = max(bias, na.rm = TRUE))
+# calculate mean nighttime bias
+mean_night_bias <- data_402 |>
+  filter(daynight == "n") |>
+  summarise(mean_bias = mean(bias, na.rm = TRUE),
+            min_bias = min(bias, na.rm = TRUE),
+            max_bias = max(bias, na.rm = TRUE))
+
+
+
+print(paste("Mean daytime bias:", round(mean_day_bias$mean_bias, 2), "K"))
+print(paste("Range daytime bias:", 
+            round(mean_day_bias$min_bias, 2), "K to", 
+            round(mean_day_bias$max_bias, 2), "K"))
+print(paste("Mean nighttime bias:", round(mean_night_bias$mean_bias, 2), "K"))
+print(paste("Range nighttime bias:", 
+            round(mean_night_bias$min_bias, 2), "K to", 
+            round(mean_night_bias$max_bias, 2), "K"))
+
 data_402 |>
   mutate(hour = hour(time),
          bias = air_temp_LCD - air_temp) |>
@@ -150,36 +174,50 @@ ggplot(aes(x = air_temp, y = bias)) +
     y = "Bias (K)"
   ) +
   theme_minimal()
-ggsave("../results/bias/bias_vs_measured_temp_rad.png", width = 7, height = 4, dpi = 400)
+ggsave("../results/bias/bias_vs_measured_temp_rad.png", width = 7, height = 4, dpi = 600)
 
 
+# dummy data for legend
+dummy_data <- data_402 |>
+  mutate(
+    bias = air_temp_LCD - air_temp,
+  ) |>
+  slice(1:2)  # take only two rows for legend
 
 data_402 |>
-    mutate(
+  mutate(
     bias = air_temp_LCD - air_temp,
     daynight_label = factor(daynight, levels = c("d", "n"), labels = c("> 0 W/m²", "0 W/m²"))
   ) |>
   ggplot(aes(x = wind_vel, y = bias)) +
-  # Light-colored points (no legend)
+  
+  # Transparent points (no legend)
   geom_point(aes(color = daynight), alpha = 0.25, show.legend = FALSE) +
-  # Darker smooth lines with legend
+  
+  # Smooth lines (no legend)
   geom_smooth(
     aes(color = daynight_label),
     method = "loess",
     se = FALSE,
-    linewidth = 1.2
+    linewidth = 1.2,
+    show.legend = FALSE
   ) +
-  # Unified color scale for both, legend limited to lines only
+    # Dummy layer for full-color points in the legend
+  geom_point(data = dummy_data, aes(color = daynight), size = 2, show.legend = TRUE) +
+  
   scale_color_manual(
     values = c(
-      "d" = "#ffbb11",         # points
-      "n" = "#115588",         # points
-      "> 0 W/m²" = "#cc9900",  # smooth line
-      "0 W/m²" = "#0d3a66"     # smooth line
+      "d" = "#ffbb11",         # actual point color
+      "n" = "#115588",         # actual point color
+      "> 0 W/m²" = "#cc9900",  # line color
+      "0 W/m²" = "#0d3a66"     # line color
     ),
-    breaks = c("> 0 W/m²", "0 W/m²"),  # only show lines in legend
+    #breaks = c("> 0 W/m²", "0 W/m²"),  # dumm
+    breaks = c("d", "n"),  # only lines in legend
+    labels = c("d" = "> 0 W/m²", "n" = "0 W/m²"),  # legend labels
     name = "Radiation"
   ) +
+  
   labs(
     title = "Bias vs. Wind Velocity",
     subtitle = "hourly data",
@@ -187,8 +225,11 @@ data_402 |>
     y = "Bias (K)"
   ) +
   theme_minimal() +
-  theme(legend.position = c(0.86, 0.6))  # inside bottom-right corner
-ggsave("../results/bias/bias_vs_wind.png", width = 8, height = 4, dpi = 400)
+  #theme(legend.position = c(0.86, 0.6))  # inside bottom-right corner
+  theme(legend.position = "right")  # legend at the bottom)
+
+ggsave("../results/bias/bias_vs_wind.png", width = 9, height = 4, dpi = 600)
+
 
 
 data_402 |>

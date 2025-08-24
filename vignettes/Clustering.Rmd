@@ -164,6 +164,8 @@ ggsave(paste0("../results/Clusters/Normalized_Variables_by_Time_Cluster_", times
 
 
 
+
+
 2. Night mean clusters
 ```{r}
 # load data
@@ -284,17 +286,19 @@ ggsave(paste0("../results/Clusters/TimeCluster_timeseries", timestep, "_", clust
 # map clusters for different meteorological variables
 all_data_daily_night_clusters |>
   select(time, Log_NR, UHI, time_cluster, station_cluster,
-         air_temp, humidity, wind_vel, wind_dir_class, rad_1d, pressure, precip_1d)
+         AT, RH, WS, WD_8, GR_1d, PA, PP_1d)
 
 
 # Define the variables to normalize
-vars_to_normalize <- c("air_temp", "humidity", "wind_vel", "rad_1d", "pressure", "precip_1d")
+vars_to_normalize <- c("AT", "RH", "WS", "GR_1d", "PA", "PP_1d")
 
 # Normalize variables to 0–1 range
 normalized_data <- all_data_daily_night_clusters |>
+    select(time, Log_NR, UHI, time_cluster, station_cluster,
+         AT, RH, WS, WD_8, GR_1d, PA, PP_1d) |>
   mutate(across(all_of(vars_to_normalize), ~ (. - min(., na.rm = TRUE)) / 
                                             (max(., na.rm = TRUE) - min(., na.rm = TRUE)))) |>
-  select(time_cluster, all_of(vars_to_normalize)) |>
+  select(time, time_cluster, all_of(vars_to_normalize)) |>
   pivot_longer(cols = all_of(vars_to_normalize), 
                names_to = "variable", values_to = "value") |>
   filter(!is.na(value))
@@ -307,7 +311,7 @@ ggplot(aes(x = time_cluster, y = value, fill = time_cluster)) +
   geom_boxplot(outlier.size = 0.5) +
   facet_wrap(~variable, scales = "free_y") +
   scale_y_continuous(limits = c(0, 1)) +
-  labs(x = "Time Cluster", y = "Normalized Value", title = "Distribution of Normalized Variables by Time Cluster") +
+  labs(x = "Time Cluster", y = "Normalized Meteorological Variables", title = "Distribution of Normalized Variables by Time Cluster") +
   theme_minimal() +
   theme(legend.position = "none") +
   # arrange the time cluster in the order 0, 3, 1, 2, NA on the x axis
@@ -318,7 +322,66 @@ ggsave(paste0("../results/Clusters/Normalized_Variables_by_Time_Cluster_", times
 
 ```
 
+# add the four representative nights as point
+```{r}
+# Define nights to highlight
+highlight_nights <- as.Date(c("2024-09-05", "2024-08-14", "2024-08-27", "2024-08-29"))
 
+# Extract the 4 nights' normalized values
+highlight_data <- normalized_data |>
+  mutate(time = as.Date(time)) |>
+  filter(time == "2024-09-05" | time == "2024-08-14" | 
+         time == "2024-08-27" | time == "2024-08-29") |>
+  filter(!is.na(value)) |>
+  mutate(time_cluster = ifelse(time == "2024-09-05", "0",
+                                 ifelse(time == "2024-08-14", "3",
+                                        ifelse(time == "2024-08-27", "1", "2")))) |>
+  group_by(time, variable) |>
+  summarize(value = mean(value, na.rm = TRUE), 
+            time_cluster = first(time_cluster), .groups = "drop")
+
+# Plot
+normalized_data_full |>
+  select(time_cluster, all_of(vars_to_normalize)) |>
+  pivot_longer(cols = all_of(vars_to_normalize), 
+               names_to = "variable", values_to = "value") |>
+  filter(!is.na(value)) |>
+  mutate(time_cluster = factor(time_cluster, levels = c("0", "3", "1", "2"))) |>
+  ggplot(aes(x = time_cluster, y = value, fill = time_cluster)) +
+  geom_boxplot(outlier.size = 0.5) +
+  # Add the 4 nights as overlaid points
+geom_point(data = highlight_data,
+           aes(x = factor(time_cluster, levels = c("0", "3", "1", "2")),
+               y = value,
+               fill = factor(time_cluster)),  # align fill with cluster color
+           shape = 21, color = "black", size = 2, stroke = 0.5,
+           position = position_jitter(width = 0, height = 0)) +
+  facet_wrap(~variable, scales = "free_y") +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(x = "Time Cluster", y = "Normalized Meteorological Variables", 
+       title = "Distribution of Normalized Variables by Time Cluster",
+       subtitle = "White dots: specific nights") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_x_discrete(limits = c("0", "3", "1", "2", NA)) +
+  scale_fill_manual(values = c("0" = "#a6d854", 
+                             "3" = "#e78ac3", 
+                             "1" = "#fc8d62", 
+                             "2" = "#8da0cb",
+                             "NA" = "grey90"))  # optional fallback for NA
+
+ggsave(paste0("../results/Clusters/Normalized_Variables_by_Time_Cluster_", timestep, "_highlighted_nights.png"), 
+       width = 6, height = 4, dpi = 400)
+
+```
+
+```{r}
+meteo_predictors_daily <- readRDS("../data/final_predictors/meteo_predictors_daily.rds")
+highlight_nights_predictors <- meteo_predictors_daily |>
+  filter(daynight == "n") |>
+  filter(time %in% highlight_nights)
+highlight_nights_predictors
+```
 
 
 
@@ -544,35 +607,35 @@ plot_data <- left_join(best_matches_long, cluster_means_long,
 
 # Define your custom cluster colors (you can use only the first 4 if you have 4 clusters)
 cluster_colors <- c('#a6d854','#fc8d62','#8da0cb','#e78ac3')
-night_colors <- c('#66a61e','#d94f22','#5560a3','#e7339a')
-#7570b3
-#e7298a
-#66a61e)
+#night_colors <- c('#66a61e','#d94f22','#5560a3','#e7339a')
+night_colors <- c('#55851A', '#AD3F1B', '#444D83', '#B92A7A')
 
 # Reuse plot_data from earlier step (joined long-format cluster means and best matches)
 
+library(ggnewscale)
+
 ggplot(plot_data, aes(x = Log_NR)) +
-  # Cluster mean: thick solid line
-  geom_line(aes(y = UHI_mean, group = time_cluster, color = time_cluster), linewidth = 1.2, alpha=0.5) +
-  # Best-match night: dashed line
-  geom_line(aes(y = UHI_night, group = time_cluster, color = time_cluster), 
-            linewidth = 0.6) +
+  geom_line(aes(y = UHI_mean, group = time_cluster, color = time_cluster),
+            linewidth = 1.2, alpha=0.8) +
   scale_color_manual(values = cluster_colors,
-                    labels = c("0" = "rainy\n2024-09-05\n",
-                               "1" = "changeable\n2024-08-27\n",
-                               "2" = "sunny\n2024-08-29\n",
-                               "3" = "windy + dry\n2024-08-14\n")) +
+                     labels = c("0" = "rainy\n2024-09-05\n",
+                                "1" = "changeable\n2024-08-27\n",
+                                "2" = "high radiation\n2024-08-29\n",
+                                "3" = "dry & windy\n2024-08-14\n")) +
   theme_minimal() +
-  labs(
-    title = "Mean UHI Profiles per Time Cluster",
-    subtitle = "lighter = Cluster Mean | darker = Best-Matching Night",
-    x = "Measurement site",
-    y = "mean nighttime UHI [K]",
-    color = "Time Cluster"
-  ) +
+  labs( title = "Mean UHI Profiles per Time Cluster", 
+        subtitle = "lighter = Cluster Mean | darker = Best-Matching Night", 
+        x = "Measurement site", 
+        y = "mean nighttime UHI [K]", 
+        color = "Cluster") + 
+  new_scale_color() +
+  geom_line(aes(y = UHI_night, group = time_cluster, color = time_cluster),
+            linewidth = 0.6) +
+  scale_color_manual(values = night_colors, guide = "none") +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.4))
 
-ggsave(paste0("../results/Clusters/UHI_Profile_Comparison_", timestep, ".png"), width = 6, height = 4, dpi = 300)
+
+ggsave(paste0("../results/Clusters/UHI_Profile_Comparison_", timestep, ".png"), width = 6, height = 4, dpi = 600)
 
 ```
 

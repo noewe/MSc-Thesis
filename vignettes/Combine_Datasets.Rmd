@@ -174,6 +174,9 @@ Thun_Network_data_daily <- read.csv("../data/Thun Messnetz 2024/Thun_daily_summa
   mutate(time = with_tz(time, tzone = "Europe/Zurich")) #should start at 2024-05-01 02:00
 ```
 
+
+
+
 Load the wind data from Strandbad
 ```{r}
 strandbad <- read.csv("../data/external/Thunerwetter/hourly_wind_24-05-01_24-10-31.CSV") 
@@ -531,8 +534,8 @@ all_data_daily <- Thun_Network_data_daily |>
   # UHI between reference temperature measured by SwissMetNet station and LCD
   mutate(air_temp_LCD = ifelse(daynight == "d", air_temp_LCD_day, air_temp_LCD_night), 
          UHI_LCD = ifelse(daynight == "d", UHI_LCD_day, UHI_LCD_night)) |>
-  mutate(UHI_day = air_temp_LCD_day - air_temp,
-         UHI_night = air_temp_LCD_night - air_temp,
+  mutate(UHI_day = air_temp_LCD_day - AT,
+         UHI_night = air_temp_LCD_night - AT,
          UHI = ifelse(daynight == "d", UHI_day, UHI_night)) |>
   select(-UHI_day, -UHI_night, -air_temp_LCD_day, -air_temp_LCD_night, -UHI_LCD_day, -UHI_LCD_night)
 
@@ -550,6 +553,27 @@ write.csv(all_data_daily, "../data/final_predictors/all_data_daily.csv")
 saveRDS(all_data_daily, "../data/final_predictors/all_data_daily.rds")
 ```
 
+Visualize missing data for UHI variable
+```{r}
+readRDS("../data/final_predictors/all_data_daily.rds") |>
+  select(time, Log_NR, UHI, daynight) |>
+  filter(daynight == "n") |>
+  # to wide format with Log_NR as columns
+  pivot_wider(names_from = Log_NR, values_from = UHI) |>
+  visdat::vis_miss(warn_large_data = FALSE, sort_miss = TRUE)
+ggsave("../results/Measurement Season 2024/Missing_night_UHI.png", width = 8, height = 4.5, dpi= 600)
+
+```
+
+```{r}
+# Load the raw data
+tenmin_raw <- read.csv("../data/Thun Messnetz 2024/Logger_data_T_2024-05-01_2024-10-30.csv") |>
+  select(-time)
+# use vismiss
+visdat::vis_miss(tenmin_raw, warn_large_data = FALSE)
+ggsave("../results/Measurement Season 2024/Missing_10min_raw.png", width = 8, height = 4.5, dpi= 600)
+  
+```
 
 Remove temporary tables *(only when the data is saved and preprocessing finished!)*
 ```{r}

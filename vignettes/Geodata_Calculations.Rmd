@@ -6,8 +6,56 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-load.packages <- c("sf", "terra", "dplyr", "ggplot2")
+source("../R/load_packages.R")
+load_packages <- c("sf", "terra", "dplyr", "ggplot2")
 ```
+
+# LU background for maps
+```{r}
+folder <- "../data/Geodata/LULCTopo_Gauss/"
+
+layers <- c("BUL", "FO", "GA", "SE", "WA", "AC")
+
+#load all layers from the folder into a raster stack
+raster_stack <- terra::rast(paste0(folder, layers, ".tif"))
+names(raster_stack) <- layers
+terra::plot(raster_stack)
+
+# Create an empty raster to hold the result (same extent/res as input)
+combined <- terra::rast(raster_stack[[1]])
+terra::values(combined) <- NA
+
+# Create one single layer with all LU types. Of each layer in the raster stack where the value is 1, 
+# in the combined layer the value will be a factor with the label of the original layer
+# Assign numeric codes to each LU type
+for (i in seq_along(layers)) {
+  mask <- raster_stack[[i]] == 1
+  combined[mask] <- i
+}
+
+# Assign labels as factor levels
+levels(combined) <- data.frame(value = seq_along(layers), label = layers)
+
+# Plot
+lu_colors <- c(
+  "BUL" = "#888888",  # Built-up
+  "FO"  = "#81B189",  # Forest
+  "GA"  = "#BDD4AC",  # Garden
+  "SE"  = "#bbbbbb",  # Sealed
+  "WA"  = "#bbe9ff",  # Water
+  "AC"  = "#BDD4AC"   # Agriculture
+)
+
+terra::plot(combined, col = lu_colors[layers], main = "Land Use Classes")
+
+# save raster
+terra::writeRaster(combined, "../data/Geodata/map_background.tif", overwrite = TRUE)
+
+rm(combined, raster_stack, layers, lu_colors, folder)
+```
+
+
+
 
 # Distance to water
 ```{r}
@@ -43,9 +91,6 @@ gaussian_smoothing <- function(raster, radius, sigma) {
   result <- terra::focal(raster, w = kernel, fun = sum, na.rm = TRUE)
   return(result)
 }
-
-
-
 
 
 n <- 100  # kernel size
@@ -263,4 +308,25 @@ for (file in bh_files) {
   terra::writeRaster(raster, file, overwrite = TRUE)
 }
 ```
+
+```{r}
+folder <- "../data/Geodata/LULCTopo_Gauss/"
+tiff_files <- list.files(folder, pattern = "\\.tif$", full.names = TRUE)
+# plot all tiffs in the folder cropped to this extent: ext(7.575, 7.675, 46.713, 46.792)
+ext <- terra::ext(7.575, 7.675, 46.713, 46.792)
+for (file in tiff_files) {
+  raster <- terra::rast(file)
+  raster <- terra::project(raster, "EPSG:4326")
+  cropped_raster <- terra::crop(raster, ext)
+  plot(cropped_raster, main = basename(file))
+  # save the plot
+  plot_file <- paste0("../data/Geodata/LULCTopo_Gauss/plots/", gsub(".tif", ".png", basename(file)))
+  png(plot_file, width = 800, height = 600)
+  plot(cropped_raster, main = basename(file))
+  dev.off()
+  
+}
+
+```
+
 
